@@ -54,21 +54,28 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       icon: 'https://cdn-icons-png.flaticon.com/512/3063/3063822.png',
       badge: 'https://cdn-icons-png.flaticon.com/512/3063/3063822.png',
       tag: 'new-trip',
-      vibrate: [200, 100, 200, 100, 200],
-      requireInteraction: true
+      vibrate: [500, 110, 500, 110, 450, 110, 200, 110, 170, 40, 450, 110, 200, 110, 170, 40],
+      requireInteraction: true,
+      data: { url: window.location.origin + '/requests' }
     };
 
-    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-      // Try to show via service worker for better background support
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.ready.then(registration => {
-          registration.showNotification(title, options);
-        }).catch(() => {
-          // Fallback to basic notification
-          new Notification(title, options);
-        });
-      } else {
-        new Notification(title, options);
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'granted') {
+        // Try to show via service worker for better background support
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.ready.then(registration => {
+            registration.showNotification(title, options);
+          });
+        } else {
+          const n = new Notification(title, options);
+          n.onclick = () => {
+            window.focus();
+            window.location.href = '/requests';
+            n.close();
+          };
+        }
+      } else if (Notification.permission !== 'denied') {
+        Notification.requestPermission();
       }
     }
     playNotificationSound();
@@ -308,7 +315,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       channels.push(pendingChannel, myChannel);
     }
 
-    const pollInterval = setInterval(refreshTrips, driver.id === 'admin' ? 60000 : 120000); 
+    const pollInterval = setInterval(refreshTrips, driver.id === 'admin' ? 30000 : 5000); 
     
     return () => {
       channels.forEach(ch => supabase.removeChannel(ch));
