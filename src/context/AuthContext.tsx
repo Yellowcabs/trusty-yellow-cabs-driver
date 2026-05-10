@@ -7,6 +7,7 @@ interface AuthContextType {
   logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isAdmin: boolean;
   toggleOnline: (status: boolean) => Promise<void>;
   refreshDriverStatus: () => Promise<void>;
 }
@@ -28,13 +29,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (driver?.id && driver.id !== 'admin') {
+    if (driver?.id && driver.id !== 'admin' && driver.isOnline && !driver.isBlocked) {
       const interval = setInterval(() => {
         refreshDriverStatus();
       }, 30000); // Check every 30 seconds
-      return () => clearInterval(interval);
+
+      // Background-friendly Location Watcher
+      let watchId: number | null = null;
+      if ('geolocation' in navigator) {
+        watchId = navigator.geolocation.watchPosition(
+          async (pos) => {
+            const { latitude, longitude, heading } = pos.coords;
+            const { updateLocationApi } = await import('../services/api');
+            await updateLocationApi(driver.id, latitude, longitude, heading || undefined);
+            
+            // Sync local state if accuracy is good
+            setDriver(prev => prev ? { ...prev, latitude, longitude, heading: heading || undefined } : null);
+          },
+          (err) => console.error('Location Error:', err),
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+          }
+        );
+      }
+
+      return () => {
+        clearInterval(interval);
+        if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      };
     }
-  }, [driver?.id]);
+  }, [driver?.id, driver?.isOnline, driver?.isBlocked]);
 
   const refreshDriverStatus = async (forcedId?: string) => {
     const driverId = forcedId || driver?.id;
@@ -51,30 +77,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const login = async (id: string, pin: string) => {
-    const { getDriverByLogin } = await import('../services/api');
-    
-    // Special case for hardcoded admin until DB is ready
-    if (id === 'admin' && pin === 'admin123') {
-      const adminDriver: Driver = {
-        id: 'admin',
-        name: 'System Admin',
-        phone: '0000',
-        pin: 'admin123',
-        vehicleModel: 'Office',
-        vehicleNumber: 'ADMIN-01',
-        isOnline: true,
-        rating: 5,
-        totalEarnings: 0,
-        completedRides: 0,
-        isBlocked: false,
-        officeFee: 0
-      };
-      setDriver(adminDriver);
-      localStorage.setItem('trusty_driver', JSON.stringify(adminDriver));
-      return true;
+    // Special case for hardcoded admin - Never hit DB for admin
+    if (id === 'admin') {
+      if (pin === 'admin123') {
+        const adminDriver: Driver = {
+          id: 'admin',
+          name: 'System Admin',
+          phone: '0000',
+          pin: 'admin123',
+          vehicleModel: 'Office',
+          vehicleNumber: 'ADMIN-01',
+          isOnline: true,
+          rating: 5,
+          totalEarnings: 0,
+          completedRides: 0,
+          isBlocked: false,
+          officeFee: 0
+        };
+        setDriver(adminDriver);
+        localStorage.setItem('trusty_driver', JSON.stringify(adminDriver));
+        return true;
+      }
+      return false; // Wrong pin for admin, don't try DB
     }
 
-    // Try fetching from Supabase
+    const { getDriverByLogin } = await import('../services/api');
+    // Try fetching from Supabase for all other users
     const dbDriver = await getDriverByLogin(id, pin);
     if (dbDriver) {
       if (dbDriver.isBlocked) return false;
@@ -104,7 +132,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ driver, login, logout, isAuthenticated: !!driver, isLoading, toggleOnline, refreshDriverStatus }}>
+    <AuthContext.Provider value={{ 
+      driver, 
+      login, 
+      logout, 
+      isAuthenticated: !!driver, 
+      isLoading, 
+      isAdmin: driver?.id === 'admin',
+      toggleOnline, 
+      refreshDriverStatus 
+    }}>
       {children}
     </AuthContext.Provider>
   );

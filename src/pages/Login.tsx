@@ -1,17 +1,20 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Car, Lock, Key, AlertCircle, ChevronRight, Headphones } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Car, Lock, Key, AlertCircle, ChevronRight, Headphones, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { isSupabaseConfigured } from '../lib/supabase';
+import { cn } from '../lib/utils';
 
 export function LoginPage() {
   const [id, setId] = useState('');
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, driver } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isAdminRequest = searchParams.get('admin') === 'true';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,9 +23,21 @@ export function LoginPage() {
     
     const success = await login(id, pin);
     if (success) {
-      // Re-fetch to check if blocked (login in context doesn't expose full driver directly easily, or maybe it does)
-      // Actually, AuthContext.login could return a result object
-      navigate('/');
+      if (isAdminRequest) {
+        if (id !== 'admin') {
+          setError('Invalid Admin Credentials.');
+          setIsLoading(false);
+          return;
+        }
+        navigate('/admin');
+      } else {
+        if (id === 'admin') {
+          setError('Please use the Admin Portal to login.');
+          setIsLoading(false);
+          return;
+        }
+        navigate('/');
+      }
     } else {
       // Check if specifically blocked
       const { getDriverByLogin } = await import('../services/api');
@@ -40,11 +55,21 @@ export function LoginPage() {
     <div className="min-h-screen bg-neutral-50 flex flex-col p-8 pb-12">
       <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full">
         <header className="mb-12 text-center">
-          <div className="w-20 h-20 bg-primary rounded-[28px] flex items-center justify-center mx-auto mb-6 premium-shadow -rotate-6">
-            <Car size={40} className="text-white" />
+          <div className={cn(
+            "w-20 h-20 rounded-[28px] flex items-center justify-center mx-auto mb-6 premium-shadow -rotate-6 transition-colors duration-500",
+            isAdminRequest ? "bg-neutral-900" : "bg-primary"
+          )}>
+            {isAdminRequest ? <ShieldCheck size={40} className="text-white" /> : <Car size={40} className="text-white" />}
           </div>
-          <h1 className="text-4xl font-black text-neutral-900 tracking-tight">Trusty Yellow</h1>
-          <p className="text-primary font-black uppercase tracking-[0.2em] -mt-1 text-sm">Driver Portal</p>
+          <h1 className="text-4xl font-black text-neutral-900 tracking-tight">
+            {isAdminRequest ? 'Admin Portal' : 'Trusty Yellow'}
+          </h1>
+          <p className={cn(
+            "font-black uppercase tracking-[0.2em] -mt-1 text-sm",
+            isAdminRequest ? "text-neutral-500" : "text-primary"
+          )}>
+            {isAdminRequest ? 'Authorized Access Only' : 'Driver Portal'}
+          </p>
         </header>
 
         {!isSupabaseConfigured && (
@@ -76,13 +101,15 @@ export function LoginPage() {
 
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest ml-1">Driver ID</label>
+              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest ml-1">
+                {isAdminRequest ? 'Admin ID' : 'Driver ID'}
+              </label>
               <div className="relative group">
                 <input
                   type="text"
                   value={id}
                   onChange={(e) => setId(e.target.value)}
-                  placeholder="e.g. D001"
+                  placeholder={isAdminRequest ? "e.g. admin" : "e.g. D001"}
                   className="w-full bg-white border-2 border-neutral-100 rounded-2xl py-4 pl-12 pr-6 font-bold text-neutral-900 focus:border-primary outline-none transition-all placeholder:text-neutral-300"
                   required
                 />
@@ -99,7 +126,6 @@ export function LoginPage() {
                   onChange={(e) => setPin(e.target.value)}
                   placeholder="••••"
                   className="w-full bg-white border-2 border-neutral-100 rounded-2xl py-4 pl-12 pr-6 font-bold text-neutral-900 focus:border-primary outline-none transition-all placeholder:text-neutral-300"
-                  maxLength={4}
                   required
                 />
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-300 group-focus-within:text-primary transition-colors" size={20} />
@@ -110,9 +136,12 @@ export function LoginPage() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-primary text-white py-4 rounded-2xl font-black text-lg premium-shadow active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+            className={cn(
+              "w-full py-4 rounded-2xl font-black text-lg premium-shadow active:scale-[0.98] transition-all flex items-center justify-center gap-2",
+              isAdminRequest ? "bg-neutral-900 text-white" : "bg-primary text-white"
+            )}
           >
-            {isLoading ? 'SIGNING IN...' : 'LOGIN TO DRIVE'}
+            {isLoading ? 'SIGNING IN...' : (isAdminRequest ? 'ACCESS ADMIN PANEL' : 'LOGIN TO DRIVE')}
             <ChevronRight size={22} />
           </button>
         </form>

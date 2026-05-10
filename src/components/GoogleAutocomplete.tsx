@@ -1,3 +1,4 @@
+/// <reference types="@types/google.maps" />
 import React, { useEffect, useRef, useState } from 'react';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 
@@ -21,8 +22,16 @@ export function GoogleAutocomplete({
   const places = useMapsLibrary('places');
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
 
+  // Track if we are currently manually typing or selecting to avoid defaultValue overrides
+  const [isFocused, setIsFocused] = useState(false);
+  const lastDefaultValue = useRef(defaultValue);
+
   useEffect(() => {
-    setInputValue(defaultValue);
+    // Only update if defaultValue changed from the OUTSIDE
+    if (defaultValue !== lastDefaultValue.current) {
+      setInputValue(defaultValue);
+      lastDefaultValue.current = defaultValue;
+    }
   }, [defaultValue]);
 
   useEffect(() => {
@@ -30,14 +39,24 @@ export function GoogleAutocomplete({
 
     const options = {
       fields: ['address_components', 'geometry', 'formatted_address', 'name'],
+      // Remove country restriction to allow all locations as requested
+      // componentRestrictions: { country: 'in' }, 
+      
+      // Bias results to Coimbatore first preference
+      locationBias: {
+        center: { lat: 11.0168, lng: 76.9558 },
+        radius: 50000 // 50km radius
+      }
     };
 
     autocompleteRef.current = new places.Autocomplete(inputRef.current, options);
 
     autocompleteRef.current.addListener('place_changed', () => {
       const place = autocompleteRef.current?.getPlace();
-      if (place) {
-        setInputValue(place.formatted_address || place.name || '');
+      if (place && place.geometry) {
+        const address = place.formatted_address || place.name || '';
+        setInputValue(address);
+        lastDefaultValue.current = address; // Mark as processed locally
         onPlaceSelect(place);
       }
     });
@@ -60,7 +79,17 @@ export function GoogleAutocomplete({
         ref={inputRef}
         type="text"
         value={inputValue}
-        onChange={(e) => setInputValue(e.target.value)}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => {
+          setIsFocused(false);
+          // Sync back to default if they didn't pick anything but defaultValue is set
+          if (!inputValue && defaultValue) {
+            setInputValue(defaultValue);
+          }
+        }}
+        onChange={(e) => {
+          setInputValue(e.target.value);
+        }}
         placeholder={placeholder}
         className={className}
       />

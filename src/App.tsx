@@ -24,6 +24,15 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" />;
 }
 
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, driver, isLoading } = useAuth();
+  if (isLoading) return null;
+  if (!isAuthenticated || driver?.id !== 'admin') {
+    return <Navigate to="/login?admin=true" />;
+  }
+  return <>{children}</>;
+}
+
 function Layout() {
   const location = useLocation();
   const { activeTrip } = useTrips();
@@ -47,7 +56,7 @@ function Layout() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/" element={<PrivateRoute><HomePage /></PrivateRoute>} />
               <Route path="/requests" element={<PrivateRoute><RequestsPage /></PrivateRoute>} />
-              <Route path="/admin" element={<PrivateRoute><AdminPage /></PrivateRoute>} />
+              <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
               <Route path="/history" element={<PrivateRoute><HistoryPage /></PrivateRoute>} />
               <Route path="/profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
               <Route path="/office-pay" element={<PrivateRoute><OfficePayPage /></PrivateRoute>} />

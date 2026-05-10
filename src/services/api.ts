@@ -129,11 +129,6 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
  * CREATE POLICY "Public update trips" ON trips FOR UPDATE USING (true);
  * CREATE POLICY "Public delete trips" ON trips FOR DELETE USING (true);
  * 
- * -- Insert Admin Account
- * INSERT INTO drivers (id, name, phone, pin, vehicle_model, vehicle_number)
- * VALUES ('admin', 'System Admin', '0000', 'admin123', 'Office', 'ADMIN-01')
- * ON CONFLICT (id) DO NOTHING;
- * 
  * -- Add office_fee to existing drivers table
  * ALTER TABLE drivers ADD COLUMN IF NOT EXISTS office_fee NUMERIC DEFAULT 0;
  */

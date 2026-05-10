@@ -20,6 +20,28 @@ export function ActiveTripScreen() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [customFare, setCustomFare] = useState(0);
 
+  // Screen Wake Lock to prevent sleeping during active trip
+  useEffect(() => {
+    let wakeLock: any = null;
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await (navigator as any).wakeLock.request('screen');
+        }
+      } catch (err) {
+        console.error(`${(err as Error).name}, ${(err as Error).message}`);
+      }
+    };
+
+    if (activeTrip?.status === 'STARTED') {
+      requestWakeLock();
+    }
+
+    return () => {
+      if (wakeLock) wakeLock.release().then(() => wakeLock = null);
+    };
+  }, [activeTrip?.status]);
+
   // Sync customFare when activeTrip changes or modal opens
   React.useEffect(() => {
     if (activeTrip?.fare) {

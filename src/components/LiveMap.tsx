@@ -47,17 +47,25 @@ export function LiveMap({ drivers }: LiveMapProps) {
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
 
   const activeDrivers = useMemo(() => {
-    // Return all drivers that have location and are online
-    return drivers.filter(d => d.latitude && d.longitude && d.isOnline && !d.isBlocked);
+    // Return all drivers that have location
+    return drivers.filter(d => d.latitude && d.longitude && !d.isBlocked);
   }, [drivers]);
 
   return (
     <div className="glass-card p-4 border-none shadow-2xl relative overflow-hidden">
-      <div className="absolute top-8 left-8 z-10 bg-white/90 backdrop-blur-md px-4 py-2 rounded-xl shadow-lg border border-neutral-100 flex items-center gap-3">
-         <div className="w-3 h-3 bg-emerald-500 rounded-full animate-pulse" />
-         <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">
-            {activeDrivers.length} Online Drivers Live
-         </p>
+      <div className="absolute top-8 left-8 z-10 flex flex-col gap-2">
+        <div className="bg-white/90 backdrop-blur-md px-4 py-2 rounded-xl shadow-lg border border-neutral-100 flex items-center gap-3">
+           <div className="w-3 h-3 bg-emerald-500 rounded-full animate-pulse" />
+           <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">
+              {drivers.filter(d => d.isOnline && !d.isBlocked).length} Online
+           </p>
+        </div>
+        <div className="bg-white/90 backdrop-blur-md px-4 py-2 rounded-xl shadow-lg border border-neutral-100 flex items-center gap-3">
+           <div className="w-3 h-3 bg-neutral-400 rounded-full" />
+           <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">
+              {drivers.filter(d => !d.isOnline && !d.isBlocked).length} Offline
+           </p>
+        </div>
       </div>
 
       <Map
@@ -92,13 +100,13 @@ export function LiveMap({ drivers }: LiveMapProps) {
                {/* Car Icon Marker */}
                <div className={cn(
                  "w-12 h-12 rounded-2xl flex items-center justify-center shadow-xl border-2 border-white transition-all transform hover:scale-110 relative",
-                 driver.rideType?.includes('suv') ? "bg-amber-500" : "bg-emerald-600",
+                 !driver.isOnline ? "bg-neutral-400 grayscale" : (driver.rideType?.includes('suv') ? "bg-amber-500" : "bg-emerald-600"),
                  selectedDriver?.id === driver.id && "ring-4 ring-primary ring-offset-2 scale-110"
                )}>
                   <Car size={24} className="text-white fill-white/20" />
                   
                   {/* Directional Arrow if heading is available */}
-                  {driver.heading !== undefined && (
+                  {driver.heading !== undefined && driver.isOnline && (
                     <div 
                       className="absolute -top-1 -right-1 bg-white p-1 rounded-full shadow-lg text-neutral-900 border border-neutral-100"
                       style={{ transform: `rotate(${driver.heading}deg)` }}
@@ -108,8 +116,10 @@ export function LiveMap({ drivers }: LiveMapProps) {
                   )}
                </div>
 
-               {/* Pulse effect for better visibility */}
-               <div className="absolute inset-0 bg-emerald-500 rounded-2xl animate-ping -z-10 opacity-20" />
+               {/* Pulse effect for better visibility - only for online */}
+               {driver.isOnline && (
+                 <div className="absolute inset-0 bg-emerald-500 rounded-2xl animate-ping -z-10 opacity-20" />
+               )}
             </div>
           </AdvancedMarker>
         ))}

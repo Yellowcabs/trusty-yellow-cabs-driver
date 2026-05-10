@@ -7,6 +7,7 @@ export interface Driver {
   pin: string; // This is the login password/PIN
   vehicleModel: string;
   vehicleNumber: string;
+  rideType?: string;
   isOnline: boolean;
   rating: number;
   totalEarnings: number;
