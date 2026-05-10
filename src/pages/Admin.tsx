@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Users, Car, BarChart3, Settings, ShieldCheck, Mail, Phone, MoreVertical, Search, CheckCircle2, Clock, X, Navigation, MapPin, IndianRupee, KeyRound, Star, Trash2, RefreshCw, TrendingUp, ChevronRight, AlertCircle, User } from 'lucide-react';
+import { Plus, Users, Car, BarChart3, Settings, ShieldCheck, Mail, Phone, MoreVertical, Search, CheckCircle2, Clock, X, Navigation, MapPin, IndianRupee, KeyRound, Star, Trash2, RefreshCw, TrendingUp, ChevronRight, AlertCircle, User, Milestone } from 'lucide-react';
 import { GoogleAutocomplete } from '../components/GoogleAutocomplete';
 import { cn } from '../lib/utils';
 import { useTrips } from '../context/TripContext';
@@ -478,7 +478,15 @@ export function AdminPage() {
                                 <>
                                   <div className="flex items-center justify-between">
                                     {trip.fare > 0 ? (
-                                      <p className="text-2xl font-black text-primary leading-none">₹{trip.fare}</p>
+                                      <div className="flex flex-col">
+                                        <p className="text-2xl font-black text-primary leading-none">₹{trip.fare}</p>
+                                        {trip.actualDistance && (
+                                          <div className="flex items-center gap-1 mt-1 bg-primary/10 px-1.5 py-0.5 rounded-lg w-fit">
+                                            <Milestone size={10} className="text-primary" />
+                                            <span className="text-[9px] font-black text-primary">{trip.actualDistance} KM</span>
+                                          </div>
+                                        )}
+                                      </div>
                                     ) : (trip.baseFare || trip.kmsFare) ? (
                                       <div className="space-y-0.5">
                                         {trip.baseFare && <p className="text-sm font-black text-primary leading-none">Base: ₹{trip.baseFare}</p>}

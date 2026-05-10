@@ -1,17 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MapPin, Phone, MessageSquare, Navigation, ArrowRight, CheckCircle2, ChevronRight, PhoneCall, AlertCircle, Car, User, X, Star, OctagonX } from 'lucide-react';
+import { MapPin, Phone, MessageSquare, Navigation, ArrowRight, CheckCircle2, ChevronRight, PhoneCall, AlertCircle, Car, User, X, Star, OctagonX, Milestone } from 'lucide-react';
 import { useTrips } from '../context/TripContext';
-import { cn } from '../lib/utils';
+import { useAuth } from '../context/AuthContext';
+import { cn, getDistance } from '../lib/utils';
 
 import { CustomerSilhouette } from './CustomerSilhouette';
 
 export function ActiveTripScreen() {
+  const { driver } = useAuth();
   const { activeTrip, updateStatus, releaseTrip } = useTrips();
   const [isUpdating, setIsUpdating] = useState(false);
   const [showEndConfirmation, setShowEndConfirmation] = useState(false);
   const [showReleaseModal, setShowReleaseModal] = useState(false);
   const [releaseReason, setReleaseReason] = useState('');
+  const [calculatedDistance, setCalculatedDistance] = useState<number | null>(null);
+  const [liveDistance, setLiveDistance] = useState(0);
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [customFare, setCustomFare] = useState(0);
@@ -23,16 +27,76 @@ export function ActiveTripScreen() {
     }
   }, [activeTrip?.id, activeTrip?.fare]);
 
+  useEffect(() => {
+    if (activeTrip?.status === 'STARTED' && activeTrip.actualStartLat && activeTrip.actualStartLng && driver?.latitude && driver?.longitude) {
+      const d = getDistance(activeTrip.actualStartLat, activeTrip.actualStartLng, driver.latitude, driver.longitude);
+      setLiveDistance(Number(d.toFixed(2)));
+    }
+  }, [driver?.latitude, driver?.longitude, activeTrip?.status, activeTrip?.actualStartLat, activeTrip?.actualStartLng]);
+
   if (!activeTrip) return null;
 
   const handleStatusUpdate = async (status: typeof activeTrip.status) => {
+    let extraData: any = {};
+    
+    if (status === 'STARTED') {
+      if (driver?.latitude && driver?.longitude) {
+        extraData.actual_start_lat = driver.latitude;
+        extraData.actual_start_lng = driver.longitude;
+      }
+    }
+
     if (status === 'COMPLETED' && !showPaymentModal) {
-      setCustomFare(activeTrip.fare);
+      // Calculate final fare based on actual distance
+      if (driver?.latitude && driver?.longitude && activeTrip.actualStartLat && activeTrip.actualStartLng) {
+        const distance = getDistance(
+          activeTrip.actualStartLat,
+          activeTrip.actualStartLng,
+          driver.latitude,
+          driver.longitude
+        );
+        
+        const roundedDistance = Number(distance.toFixed(2));
+        setCalculatedDistance(roundedDistance);
+
+        // Calculate fare: base + (kms * kmsFare)
+        const base = activeTrip.baseFare || 0;
+        const rate = activeTrip.kmsFare || 0;
+        
+        // IfkmsFare is set but baseFare is 0, still use the kms logic
+        // If neither are set and total fare is 0, default to 0
+        const calculatedFare = Math.max(0, Math.round(base + (roundedDistance * rate)));
+        
+        // If rate card is present, override the dispatch total fare
+        if (activeTrip.baseFare || activeTrip.kmsFare) {
+          setCustomFare(calculatedFare);
+        } else {
+          setCustomFare(activeTrip.fare);
+        }
+      } else {
+        setCustomFare(activeTrip.fare);
+      }
+      
       setShowPaymentModal(true);
       return;
     }
+
     setIsUpdating(true);
-    await updateStatus(status);
+    
+    // Final check for payment modal values
+    if (status === 'COMPLETED' && showPaymentModal) {
+      extraData.fare = customFare;
+      if (driver?.latitude && driver?.longitude) {
+        extraData.actual_end_lat = driver.latitude;
+        extraData.actual_end_lng = driver.longitude;
+        if (activeTrip.actualStartLat && activeTrip.actualStartLng) {
+          const distance = getDistance(activeTrip.actualStartLat, activeTrip.actualStartLng, driver.latitude, driver.longitude);
+          extraData.actual_distance = Number(distance.toFixed(2));
+        }
+      }
+    }
+
+    await updateStatus(status, extraData);
     setIsUpdating(false);
     if (status === 'COMPLETED') {
       setShowPaymentModal(false);
@@ -194,10 +258,18 @@ export function ActiveTripScreen() {
           <div className="flex justify-between items-center mt-6 pt-6 border-t border-dashed border-neutral-200">
              <div>
                <p className="text-xs font-bold text-neutral-400">
-                 {activeTrip.fare > 0 ? 'TOTAL FARE' : (activeTrip.baseFare || activeTrip.kmsFare) ? 'RATE CARD' : 'TOTAL FARE'}
+                 {activeTrip.status === 'STARTED' ? 'LIVE FARE' : activeTrip.fare > 0 ? 'TOTAL FARE' : (activeTrip.baseFare || activeTrip.kmsFare) ? 'RATE CARD' : 'TOTAL FARE'}
                </p>
                {activeTrip.fare > 0 ? (
-                 <p className="text-3xl font-black text-primary leading-none mt-1">₹{activeTrip.fare}</p>
+                 <div className="flex flex-col">
+                   <p className="text-3xl font-black text-primary leading-none mt-1">₹{activeTrip.status === 'STARTED' ? Math.round((activeTrip.baseFare || 0) + (liveDistance * (activeTrip.kmsFare || 0))) : activeTrip.fare}</p>
+                   {activeTrip.status === 'STARTED' && (
+                     <div className="flex items-center gap-1 mt-2 text-primary font-black text-[10px] bg-primary/10 px-2 py-1 rounded-lg w-fit">
+                        <Milestone size={12} />
+                        {liveDistance} KM
+                     </div>
+                   )}
+                 </div>
                ) : (activeTrip.baseFare || activeTrip.kmsFare) ? (
                  <div className="flex flex-col mt-1">
                    {activeTrip.baseFare !== undefined && (
@@ -249,6 +321,12 @@ export function ActiveTripScreen() {
 
               <div className="p-6 space-y-5">
                 <div className="text-center">
+                  {calculatedDistance !== null && (
+                    <div className="flex items-center justify-center gap-2 mb-3 bg-neutral-50 py-2 px-4 rounded-2xl border border-neutral-100 inline-flex mx-auto">
+                      <Milestone size={16} className="text-primary" />
+                      <span className="text-xs font-black text-neutral-600">{calculatedDistance} KM TRAVELED</span>
+                    </div>
+                  )}
                   <p className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] mb-1">Final Amount</p>
                   <div className="flex items-center justify-center gap-1">
                     <span className="text-xl font-black text-neutral-900">₹</span>

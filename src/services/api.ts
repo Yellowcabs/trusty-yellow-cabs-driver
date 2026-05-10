@@ -36,7 +36,7 @@
  */
 
 import { Trip, Driver } from '../types';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 /**
  * SUPABASE SQL SCHEMA (Run this in Supabase SQL Editor)
@@ -64,11 +64,21 @@ import { supabase } from '../lib/supabase';
  *   timestamp TIMESTAMPTZ DEFAULT NOW(),
  *   start_time TIMESTAMPTZ,
  *   end_time TIMESTAMPTZ,
+ *   actual_start_lat DOUBLE PRECISION,
+ *   actual_start_lng DOUBLE PRECISION,
+ *   actual_end_lat DOUBLE PRECISION,
+ *   actual_end_lng DOUBLE PRECISION,
+ *   actual_distance NUMERIC,
  *   target_location_only BOOLEAN DEFAULT FALSE,
  *   target_radius INTEGER DEFAULT 5
  * );
  * 
  * -- Update existing table if needed:
+ * -- ALTER TABLE trips ADD COLUMN actual_start_lat DOUBLE PRECISION;
+ * -- ALTER TABLE trips ADD COLUMN actual_start_lng DOUBLE PRECISION;
+ * -- ALTER TABLE trips ADD COLUMN actual_end_lat DOUBLE PRECISION;
+ * -- ALTER TABLE trips ADD COLUMN actual_end_lng DOUBLE PRECISION;
+ * -- ALTER TABLE trips ADD COLUMN actual_distance NUMERIC;
  * -- ALTER TABLE trips ADD COLUMN pickup_lat DOUBLE PRECISION;
  * -- ALTER TABLE trips ADD COLUMN pickup_lng DOUBLE PRECISION;
  * -- ALTER TABLE trips ADD COLUMN drop_lat DOUBLE PRECISION;
@@ -164,12 +174,21 @@ export async function fetchTrips(filters?: { status?: Trip['status']; driverId?:
         releasedBy: row.released_by || [],
         startTime: row.start_time,
         endTime: row.end_time,
+        actualStartLat: row.actual_start_lat,
+        actualStartLng: row.actual_start_lng,
+        actualEndLat: row.actual_end_lat,
+        actualEndLng: row.actual_end_lng,
+        actualDistance: row.actual_distance,
         targetLocationOnly: row.target_location_only,
         targetRadius: row.target_radius
       }));
     }
 
     // Fallback to direct client-side Supabase
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase not configured');
+    }
+
     let query = supabase.from('trips').select('*');
     if (filters?.status) query = query.eq('status', filters.status);
     if (filters?.driverId) query = query.eq('driver_id', filters.driverId);
@@ -202,6 +221,11 @@ export async function fetchTrips(filters?: { status?: Trip['status']; driverId?:
       releasedBy: row.released_by || [],
       startTime: row.start_time,
       endTime: row.end_time,
+      actualStartLat: row.actual_start_lat,
+      actualStartLng: row.actual_start_lng,
+      actualEndLat: row.actual_end_lat,
+      actualEndLng: row.actual_end_lng,
+      actualDistance: row.actual_distance,
       targetLocationOnly: row.target_location_only,
       targetRadius: row.target_radius
     }));
@@ -256,6 +280,10 @@ export async function createTripApi(trip: Omit<Trip, 'id' | 'status' | 'timestam
     }
 
     // Fallback to client-side
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase not configured');
+    }
+
     const { data, error } = await supabase
       .from('trips')
       .insert([newTripRow])
@@ -284,6 +312,7 @@ export async function createTripApi(trip: Omit<Trip, 'id' | 'status' | 'timestam
 
 export async function updateTripFareApi(tripId: string, fare: number): Promise<{ success: boolean; error?: string }> {
   try {
+    if (!isSupabaseConfigured) throw new Error('Supabase not configured');
     const { error } = await supabase
       .from('trips')
       .update({ fare })
@@ -297,9 +326,10 @@ export async function updateTripFareApi(tripId: string, fare: number): Promise<{
   }
 }
 
-export async function updateTripStatus(tripId: string, status: Trip['status'], driverId?: string, releaseReason?: string): Promise<{ success: boolean; error?: string }> {
+export async function updateTripStatus(tripId: string, status: Trip['status'], driverId?: string, extraData?: any): Promise<{ success: boolean; error?: string }> {
   try {
-    const updateData: any = { status };
+    if (!isSupabaseConfigured) throw new Error('Supabase not configured');
+    const updateData: any = { status, ...extraData };
     if (driverId) updateData.driver_id = driverId;
     if (status === 'PENDING') {
       updateData.driver_id = null;
@@ -322,6 +352,7 @@ export async function updateTripStatus(tripId: string, status: Trip['status'], d
 
 export async function releaseTripApi(tripId: string, driverId: string, currentReleasedBy: any[], reason: string): Promise<{ success: boolean; error?: string }> {
   try {
+    if (!isSupabaseConfigured) throw new Error('Supabase not configured');
     const releaseEntry = {
       driverId,
       timestamp: new Date().toISOString(),
@@ -349,6 +380,7 @@ export async function releaseTripApi(tripId: string, driverId: string, currentRe
 
 export async function rejectTripApi(tripId: string, driverId: string, currentRejectedBy: string[]): Promise<{ success: boolean; error?: string }> {
   try {
+    if (!isSupabaseConfigured) throw new Error('Supabase not configured');
     const timestamp = Date.now().toString();
     const rejectionEntry = `${driverId}|${timestamp}`;
     
@@ -375,6 +407,7 @@ export async function rejectTripApi(tripId: string, driverId: string, currentRej
 
 export async function deleteTripApi(tripId: string): Promise<{ success: boolean; error?: string }> {
   try {
+    if (!isSupabaseConfigured) throw new Error('Supabase not configured');
     const { error } = await supabase
       .from('trips')
       .delete()
@@ -424,6 +457,10 @@ export async function fetchDrivers(filters?: { isOnline?: boolean; search?: stri
     }
 
     // Fallback to direct client-side Supabase
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase not configured');
+    }
+
     let query = supabase.from('drivers').select('*');
     if (filters?.isOnline !== undefined) query = query.eq('is_online', filters.isOnline);
     if (filters?.search) {
@@ -480,6 +517,7 @@ export async function createDriverApi(driverData: Omit<Driver, 'rating' | 'total
   };
 
   try {
+    if (!isSupabaseConfigured) throw new Error('Supabase not configured');
     const { data, error } = await supabase
       .from('drivers')
       .insert([newDriverRow])
@@ -521,6 +559,8 @@ export async function updateDriverOnlineStatus(driverId: string, isOnline: boole
     if (response.ok) return true;
 
     // Fallback to client-side Supabase
+    if (!isSupabaseConfigured) return false;
+
     const { error } = await supabase
       .from('drivers')
       .update({ is_online: isOnline })
@@ -536,6 +576,7 @@ export async function updateDriverOnlineStatus(driverId: string, isOnline: boole
 
 export async function getDriverByLogin(identifier: string, pin: string): Promise<Driver | null> {
   try {
+    if (!isSupabaseConfigured) return null;
     // Try login by ID
     let { data, error } = await supabase
       .from('drivers')
@@ -586,6 +627,7 @@ export async function getDriverByLogin(identifier: string, pin: string): Promise
 
 export async function updateLocationApi(driverId: string, lat: number, lng: number, heading?: number): Promise<boolean> {
   try {
+    if (!isSupabaseConfigured) return false;
     const updateData: any = { 
       latitude: lat, 
       longitude: lng,
@@ -615,6 +657,7 @@ export async function updateLocationApi(driverId: string, lat: number, lng: numb
 
 export async function uploadDriverPhoto(file: File, driverId: string): Promise<string | null> {
   try {
+    if (!isSupabaseConfigured) return null;
     const fileExt = file.name.split('.').pop();
     const fileName = `${driverId}-${Math.random()}.${fileExt}`;
     const filePath = `${fileName}`; // Just put in root of bucket or a subfolder
@@ -638,6 +681,7 @@ export async function uploadDriverPhoto(file: File, driverId: string): Promise<s
 
 export async function updateDriverBlockedStatus(driverId: string, isBlocked: boolean): Promise<boolean> {
   try {
+    if (!isSupabaseConfigured) return false;
     const { error } = await supabase
       .from('drivers')
       .update({ is_blocked: isBlocked })
@@ -653,6 +697,7 @@ export async function updateDriverBlockedStatus(driverId: string, isBlocked: boo
 
 export async function updateOfficeFeeApi(driverId: string, amount: number): Promise<boolean> {
   try {
+    if (!isSupabaseConfigured) return false;
     const { error } = await supabase
       .from('drivers')
       .update({ office_fee: amount })

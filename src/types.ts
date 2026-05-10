@@ -42,6 +42,11 @@ export interface Trip {
   releasedBy?: { driverId: string; timestamp: string; reason: string }[];
   startTime?: string;
   endTime?: string;
+  actualStartLat?: number;
+  actualStartLng?: number;
+  actualEndLat?: number;
+  actualEndLng?: number;
+  actualDistance?: number;
   targetLocationOnly?: boolean; // if true, only show to drivers within targetRadius
   targetRadius?: number; // in km
 }

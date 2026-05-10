@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { Trip } from '../types';
 import { fetchTrips, updateTripStatus, deleteTripApi, rejectTripApi } from '../services/api';
 import { useAuth } from './AuthContext';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { getDistance } from '../lib/utils';
 
 interface TripContextType {
@@ -12,7 +12,7 @@ interface TripContextType {
   acceptTrip: (tripId: string) => Promise<void>;
   rejectTrip: (tripId: string) => Promise<void>;
   releaseTrip: (tripId: string, reason: string) => Promise<void>;
-  updateStatus: (status: Trip['status']) => Promise<void>;
+  updateStatus: (status: Trip['status'], extraData?: any) => Promise<void>;
   createTrip: (trip: Omit<Trip, 'id' | 'status' | 'timestamp'>) => Promise<{ success: boolean; error?: string }>;
   cancelTrip: (tripId: string) => Promise<{ success: boolean; error?: string }>;
   updateTripFare: (tripId: string, fare: number) => Promise<{ success: boolean; error?: string }>;
@@ -164,6 +164,11 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
 
     refreshTrips();
     
+    if (!isSupabaseConfigured) {
+      const pollInterval = setInterval(refreshTrips, 30000); // Poll more frequently if realtime is off
+      return () => clearInterval(pollInterval);
+    }
+
     const handleChanges = (payload: any) => {
       const { eventType, new: newRecord, old: oldRecord } = payload;
       
@@ -203,6 +208,11 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
               releasedBy: newRecord.released_by || [],
               startTime: newRecord.start_time,
               endTime: newRecord.end_time,
+              actualStartLat: newRecord.actual_start_lat,
+              actualStartLng: newRecord.actual_start_lng,
+              actualEndLat: newRecord.actual_end_lat,
+              actualEndLng: newRecord.actual_end_lng,
+              actualDistance: newRecord.actual_distance,
               targetLocationOnly: newRecord.target_location_only,
               targetRadius: newRecord.target_radius
             };
@@ -221,6 +231,11 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
               releasedBy: newRecord.released_by || [],
               startTime: newRecord.start_time,
               endTime: newRecord.end_time,
+              actualStartLat: newRecord.actual_start_lat,
+              actualStartLng: newRecord.actual_start_lng,
+              actualEndLat: newRecord.actual_end_lat,
+              actualEndLng: newRecord.actual_end_lng,
+              actualDistance: newRecord.actual_distance,
               targetLocationOnly: newRecord.target_location_only,
               targetRadius: newRecord.target_radius
             };
@@ -248,6 +263,11 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
               releasedBy: newRecord.released_by || [],
               startTime: newRecord.start_time,
               endTime: newRecord.end_time,
+              actualStartLat: newRecord.actual_start_lat,
+              actualStartLng: newRecord.actual_start_lng,
+              actualEndLat: newRecord.actual_end_lat,
+              actualEndLng: newRecord.actual_end_lng,
+              actualDistance: newRecord.actual_distance,
               targetLocationOnly: newRecord.target_location_only,
               targetRadius: newRecord.target_radius
             };
@@ -347,9 +367,9 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     return { success: result.success, error: result.error };
   };
 
-  const updateStatus = async (status: Trip['status']) => {
+  const updateStatus = async (status: Trip['status'], extraData?: any) => {
     if (!activeTrip || !driver || driver.isBlocked) return;
-    const result = await updateTripStatus(activeTrip.id, status, driver.id);
+    const result = await updateTripStatus(activeTrip.id, status, driver.id, extraData);
     if (result.success) {
       await refreshTrips();
     }
