@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MapPin, Phone, MessageSquare, Navigation, ArrowRight, CheckCircle2, ChevronRight, PhoneCall, AlertCircle, Car, User, X, Star, OctagonX, Milestone } from 'lucide-react';
+import { MapPin, Phone, MessageSquare, Navigation, ArrowRight, CheckCircle2, ChevronRight, PhoneCall, AlertCircle, Car, User, X, Star, OctagonX, Milestone, MessageCircle } from 'lucide-react';
 import { useTrips } from '../context/TripContext';
 import { useAuth } from '../context/AuthContext';
 import { cn, getDistance } from '../lib/utils';
@@ -199,28 +199,20 @@ export function ActiveTripScreen() {
       {/* Header / Map Placeholder */}
       <div className="h-56 sm:h-72 bg-neutral-200 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-black/50 to-transparent p-5 text-white z-10">
-          <button 
-            onClick={() => setShowReleaseModal(true)}
-            className="px-5 py-2.5 bg-white/10 backdrop-blur-xl rounded-full text-[10px] font-black tracking-widest border border-white/20 flex items-center gap-2 hover:bg-white/20 transition-all uppercase"
-          >
-             <X size={14} strokeWidth={3} /> RELEASE TRIP
-          </button>
+ <div className="relative">
+  <button
+    onClick={() => setShowReleaseModal(true)}
+    className="absolute top-12 left-1/2 -translate-x-1/2 px-4 py-4 bg-white/10 backdrop-blur-xl rounded-full text-sm font-black tracking-widest border border-white/20 flex items-center gap-2 hover:bg-white/20 transition-all uppercase"
+  >
+    <X size={14} strokeWidth={3} /> RELEASE TRIP
+  </button>
+</div>
         </div>
-        <img 
-          src="https://images.unsplash.com/photo-1526628953301-3e589a6a8b74?q=80&w=1000" 
-          className="w-full h-full object-cover opacity-60" 
-          alt="Map"
-        />
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-12 h-12 bg-primary rounded-full premium-shadow flex items-center justify-center animate-bounce shadow-primary-light/50">
-             <Car size={24} className="text-white" />
-          </div>
-        </div>
-        <div className="absolute bottom-4 right-4 z-10">
-           <button className="bg-primary text-white p-4 rounded-full premium-shadow animate-pulse">
-             <Navigation size={28} fill="currentColor" />
-           </button>
-        </div>
+       <div className="relative w-full h-full overflow-hidden">
+  <div className="absolute inset-0 bg-gradient-to-br from-red-500 via-red-400 to-red-700 opacity-80" />
+</div>
+     
+      
       </div>
 
       <div className="px-4 sm:px-6 -mt-8 relative z-20">
@@ -232,12 +224,12 @@ export function ActiveTripScreen() {
                   <CustomerSilhouette className="w-10 h-10" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-black tracking-tight">{activeTrip.customerName}</h2>
+                  <h2 className="text-[12px] font-bold text-neutral-400 uppercase tracking-widest">{activeTrip.customerName}</h2>
                   <div className="flex items-center gap-2 mt-1">
                     <div className="flex items-center gap-1 text-amber-500 font-black text-xs bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-100">
-                      <Star size={12} fill="currentColor" /> 4.9
+                      <Star size={20} fill="currentColor" /> 5.0
                     </div>
-                    <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">LOYAL CUSTOMER</span>
+                    
                   </div>
                 </div>
               </div>
@@ -246,9 +238,9 @@ export function ActiveTripScreen() {
             <div className="flex gap-3">
               <a 
                 href={`tel:${activeTrip.customerPhone}`}
-                className="flex-1 h-16 rounded-2xl bg-emerald-600 text-white flex items-center justify-center gap-3 active:scale-95 transition-all shadow-lg shadow-emerald-600/20 font-black"
+                className="flex-1 h-16 rounded-2xl bg-green-500 text-white flex items-center justify-center gap-3 active:scale-95 transition-all shadow-lg shadow-emerald-600/20 font-black"
               >
-                <PhoneCall size={24} fill="currentColor" />
+                <PhoneCall size={20} fill="currentColor" />
                 CALL NOW
               </a>
               <a 
@@ -257,7 +249,7 @@ export function ActiveTripScreen() {
                 rel="noreferrer"
                 className="w-16 h-16 rounded-2xl bg-green-500 text-white flex items-center justify-center active:scale-95 transition-all shadow-lg shadow-green-500/20"
               >
-                <MessageSquare size={26} fill="currentColor" />
+                  <MessageCircle size={35} />
               </a>
             </div>
           </div>
@@ -305,23 +297,29 @@ export function ActiveTripScreen() {
                  <p className="text-3xl font-black text-primary leading-none mt-1">₹0</p>
                )}
              </div>
-             <div className="text-right">
-               <p className="text-xs font-bold text-neutral-400">RIDE TYPE</p>
-               <p className="text-lg font-black text-neutral-900 leading-none mt-1">{activeTrip.rideType}</p>
-             </div>
+          <div className="text-right">
+  <p className="text-[10px] font-semibold tracking-[0.2em] text-neutral-500 uppercase">
+    RIDE TYPE
+  </p>
+
+  <p className="mt-1 text-sm font-bold tracking-wide text-neutral-900 uppercase">
+    {activeTrip.rideType}
+  </p>
+</div>
           </div>
         </div>
 
-        <div className="mt-8 space-y-4">
-           {getStatusButton()}
-           <a 
-             href="tel:+914223596446"
-             className="w-full py-4 text-red-600 font-bold text-sm bg-red-50 rounded-2xl flex items-center justify-center gap-2 premium-shadow active:scale-[0.98] transition-all"
-           >
-              <AlertCircle size={18} />
-              CONTACT OFFICE EMERGENCY
-           </a>
-        </div>
+       <div className="mt-8 space-y-4">
+  {getStatusButton()}
+
+  <a 
+    href="tel:+914223596446"
+    className="w-full py-4 text-red-600 font-bold text-sm bg-red-50 rounded-2xl flex items-center justify-center gap-2 premium-shadow active:scale-[0.98] transition-all"
+  >
+    <Phone size={18} />
+    CONTACT OFFICE EMERGENCY
+  </a>
+</div>
       </div>
 
       {/* Release Reason Modal */}
@@ -372,7 +370,12 @@ export function ActiveTripScreen() {
                    </div>
                    <p className="text-[9px] font-black text-neutral-400 tracking-[0.1em] uppercase mb-1">Scan for UPI</p>
                    <p className="text-[10px] text-neutral-500 font-black mb-2 uppercase tracking-wide">A/C: DHIWAKAR M</p>
-                   <p className="text-xs font-black text-primary bg-primary/5 px-4 py-1.5 rounded-full border border-primary/20 select-all cursor-pointer shadow-sm" title="Click to copy">123mdcreation@okaxis</p>
+                  <p
+  className="text-xs font-semibold text-primary bg-primary/10 px-4 py-1.5 rounded-full border border-primary/30 select-all cursor-pointer shadow-sm hover:bg-primary/20 transition"
+  title="Click to copy"
+>
+  123mdcreation@okaxis
+</p>
                 </div>
 
                 <div className="pt-2">

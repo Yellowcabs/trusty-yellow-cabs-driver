@@ -32,20 +32,22 @@ export function RequestsPage() {
           <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">Near You</p>
           <h1 className="text-3xl font-black text-neutral-900">Trip Requests</h1>
         </div>
-        <div className="flex flex-col items-end gap-2">
-            {permission !== 'granted' && (
-              <button 
-                onClick={requestPermission}
-                className="flex items-center gap-2 bg-amber-50 text-amber-600 px-3 py-1.5 rounded-full text-[10px] font-black animate-bounce"
-              >
-                <BellRing size={14} />
-                ENABLE ALERTS
-              </button>
-            )}
-            <div className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-full text-[10px] font-black">
-              <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-              ACTIVE RADAR
-            </div>
+      <div className="flex flex-col items-end gap-3">
+
+  {permission !== "granted" && (
+    <button
+      onClick={requestPermission}
+      className="flex items-center gap-2 bg-white/90 backdrop-blur-md text-amber-600 px-4 py-2 rounded-2xl shadow-sm border border-amber-100 text-[11px] font-semibold active:scale-95 transition"
+    >
+      <BellRing size={16} className="text-amber-500" />
+      Enable Alerts
+    </button>
+  )}
+
+  <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md text-emerald-600 px-4 py-2 rounded-2xl shadow-sm border border-emerald-100 text-[11px] font-semibold">
+    <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse" />
+    Active Radar
+  </div>
         </div>
       </header>
 

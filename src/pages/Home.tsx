@@ -155,9 +155,6 @@ export function HomePage() {
              </div>
            )}
 
-           <div className="flex justify-between items-end">
-              <h2 className="text-xl font-black text-neutral-900">Recent Activity</h2>
-           </div>
            
            {driver?.isOnline && pendingTrips.length > 0 ? (
              <div 

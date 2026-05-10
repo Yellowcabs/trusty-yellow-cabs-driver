@@ -72,7 +72,9 @@ export function ProfilePage() {
                 <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
                 <p className="text-[12px] font-black text-neutral-400 uppercase tracking-widest">Active Driver</p>
              </div>
-             <p className="mt-4 text-[10px] font-black bg-neutral-900 text-white px-3 py-1.5 rounded-xl uppercase tracking-[0.2em] inline-block">#{driver.id.toUpperCase()}</p>
+            <p className="mt-4 text-base font-extrabold bg-neutral-200 text-neutral-900 px-4 py-2 rounded-xl uppercase tracking-widest inline-block">
+  #{driver.id.toUpperCase()}
+</p>
           </div>
         </div>
 
@@ -101,66 +103,104 @@ export function ProfilePage() {
                       {showPin ? driver.pin : `••••${driver.pin.slice(-2)}`}
                     </p>
                  </div>
-                 <button 
-                  onClick={() => setShowPin(!showPin)}
-                  className="text-[10px] font-black text-primary hover:text-primary/80 bg-primary/5 px-4 py-2 rounded-xl transition-all"
-                 >
-                   {showPin ? 'HIDE' : 'REVEAL'}
-                 </button>
+              <button
+  onClick={() => setShowPin(!showPin)}
+  className="text-sm font-bold text-primary bg-primary/10 px-6 py-3 rounded-2xl hover:bg-primary/20 transition-all"
+>
+  {showPin ? 'HIDE' : 'REVEAL'}
+</button>
               </div>
            </div>
         </div>
 
-        {/* Vehicle Section */}
-        <div className="space-y-4">
-           <p className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.3em] px-2">VEHICLE EQUIPMENT</p>
-           
-           <div className="glass-card p-8 bg-neutral-900 text-white overflow-hidden relative border-none shadow-2xl shadow-neutral-900/20">
-              <div className="absolute top-0 right-0 w-48 h-48 bg-primary/20 rounded-full -mr-24 -mt-24 blur-3xl opacity-50" />
-              
-              <div className="flex justify-between items-start mb-8 relative z-10">
-                 <div>
-                    <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest leading-none mb-2">Registration Model</p>
-                    <h3 className="text-2xl font-black tracking-tight">{driver.vehicleModel}</h3>
-                 </div>
-                 <div className="bg-white/10 p-4 rounded-2xl backdrop-blur-xl border border-white/10">
-                    <Car size={28} className="text-primary" />
-                 </div>
-              </div>
+      {/* Vehicle Section */}
+<div className="space-y-3 sm:space-y-4">
+  <p className="text-[9px] sm:text-[10px] font-black text-neutral-400 uppercase tracking-[0.25em] px-2">
+    Vehicle Equipment
+  </p>
 
-              <div className="flex items-end justify-between relative z-10">
-                 <div>
-                    <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest leading-none mb-3">License Plate</p>
-                    <div className="inline-flex items-center bg-white rounded-lg p-1.5 pr-4 border-l-[10px] border-primary">
-                       <p className="text-2xl font-black tracking-tight text-neutral-900 uppercase ml-3">{driver.vehicleNumber}</p>
-                    </div>
-                 </div>
-                 <div className="flex items-center gap-2 bg-emerald-500/20 text-emerald-400 px-4 py-2.5 rounded-2xl backdrop-blur-xl border border-emerald-500/20">
-                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Verified</span>
-                 </div>
-              </div>
-           </div>
+  <div className="relative overflow-hidden bg-white text-neutral-900 border border-neutral-200 shadow-sm rounded-2xl p-5 sm:p-8">
+
+    {/* Background glow */}
+    <div className="absolute top-0 right-0 w-40 sm:w-52 h-40 sm:h-52 bg-blue-100 rounded-full -mr-20 sm:-mr-24 -mt-20 sm:-mt-24 blur-3xl opacity-60" />
+
+    <div className="relative z-10 space-y-6">
+
+      {/* Top Row */}
+      <div className="flex items-start justify-between">
+
+        {/* Left */}
+        <div className="space-y-1">
+          <p className="text-[9px] sm:text-[10px] font-semibold text-neutral-400 uppercase tracking-widest">
+            Registration Model
+          </p>
+          <h3 className="text-lg sm:text-2xl font-black tracking-tight leading-tight text-neutral-900">
+            {driver.vehicleModel}
+          </h3>
         </div>
 
-        {/* Support Card - Contact Office */}
-        <a 
-          href="tel:+919876543210" 
-          className="w-full glass-card p-6 flex items-center justify-between hover:bg-primary/5 transition-all border-dashed border-2 border-primary/20 group"
-        >
-           <div className="flex items-center gap-5">
-              <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center transition-transform group-active:scale-90">
-                 <Phone size={24} />
-              </div>
-              <div className="text-left">
-                 <p className="text-lg font-black text-neutral-900 tracking-tight">Contact Office</p>
-                 <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mt-1">24/7 Driver Support</p>
-              </div>
-           </div>
-           <div className="w-12 h-12 rounded-full bg-primary text-white flex items-center justify-center shadow-lg shadow-primary/30 group-hover:scale-110 transition-all">
-              <Phone size={18} fill="currentColor" />
-           </div>
-        </a>
+      
+
+      </div>
+
+      {/* Divider (optional but improves alignment) */}
+      <div className="h-px bg-neutral-100" />
+
+      {/* Bottom Row */}
+      <div className="flex items-end justify-between">
+
+        {/* License Plate */}
+        <div className="space-y-2">
+          <p className="text-[9px] sm:text-[10px] font-semibold text-neutral-400 uppercase tracking-widest">
+            License Plate
+          </p>
+
+          <div className="flex items-center bg-neutral-50 rounded-xl border border-neutral-200 shadow-sm overflow-hidden">
+            <div className="w-1.5 sm:w-2 h-full bg-blue-500" />
+            <p className="text-lg sm:text-2xl font-black tracking-tight text-neutral-900 uppercase px-3 sm:px-4 py-2">
+              {driver.vehicleNumber}
+            </p>
+          </div>
+        </div>
+
+        {/* Status */}
+        <div className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-3 sm:px-4 py-2 rounded-xl border border-emerald-100 h-fit">
+          <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+          <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest">
+            Verified
+          </span>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+</div>
+  {/* Support Card - Contact Office (App Style) */}
+<a
+  href="tel:+914223596446"
+  className="w-full flex items-center justify-between px-5 py-4 rounded-2xl bg-white shadow-sm active:scale-[0.98] transition-all border border-neutral-100 hover:shadow-md"
+>
+  <div className="flex items-center gap-4">
+    
+    {/* Icon Circle */}
+    <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center shadow-inner">
+      <Phone size={22} />
+    </div>
+
+    {/* Text */}
+    <div className="text-left">
+      <p className="text-base font-semibold text-neutral-900">
+        Contact Office
+      </p>
+      <p className="text-xs font-medium text-neutral-500 mt-0.5">
+        24/7 Driver Support Available
+      </p>
+    </div>
+  </div>
+
+  
+</a>
       </main>
     </div>
   );

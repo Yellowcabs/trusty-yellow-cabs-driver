@@ -27,9 +27,9 @@ export function TripCard({ trip, onAccept, onReject, className }: TripCardProps)
       <div className="p-5">
         <div className="flex justify-between items-start mb-4">
           <div>
-            <span className="text-[10px] font-bold text-primary uppercase tracking-wider bg-primary/10 px-2 py-1 rounded">
-              {trip.rideType}
-            </span>
+          <span className="text-[20px] font-bold text-primary uppercase tracking-wider">
+  {trip.rideType}
+</span>
             <div className="flex items-center gap-1 mt-2 text-neutral-500 text-xs">
               <Clock size={14} />
               <span>{trip.distance} • Now</span>
@@ -65,29 +65,40 @@ export function TripCard({ trip, onAccept, onReject, className }: TripCardProps)
             )}
           </div>
         </div>
+<div className="space-y-4 relative">
+  {/* Vertical line connector */}
+  <div className="absolute left-[7px] top-[24px] bottom-[24px] w-[2px] bg-neutral-100" />
+  
+  <div className="flex gap-3 items-start">
+    <div className="mt-1 w-4 h-4 rounded-full border-2 border-primary bg-white z-10 flex items-center justify-center">
+      <div className="w-1.5 h-1.5 bg-primary rounded-full" />
+    </div>
 
-        <div className="space-y-4 relative">
-          {/* Vertical line connector */}
-          <div className="absolute left-[7px] top-[24px] bottom-[24px] w-[2px] bg-neutral-100" />
-          
-          <div className="flex gap-3 items-start">
-            <div className="mt-1 w-4 h-4 rounded-full border-2 border-primary bg-white z-10 flex items-center justify-center">
-              <div className="w-1.5 h-1.5 bg-primary rounded-full" />
-            </div>
-            <div>
-              <p className="text-[10px] uppercase font-bold text-neutral-400 tracking-tight leading-none mb-1">Pick up</p>
-              <p className="text-sm font-semibold truncate leading-tight">{trip.pickup}</p>
-            </div>
-          </div>
-          
-          <div className="flex gap-3 items-start">
-            <div className="mt-1 w-4 h-4 border-2 border-neutral-900 bg-neutral-900 z-10 rounded-sm" />
-            <div>
-              <p className="text-[10px] uppercase font-bold text-neutral-400 tracking-tight leading-none mb-1">Drop off</p>
-              <p className="text-sm font-semibold truncate leading-tight">{trip.drop}</p>
-            </div>
-          </div>
-        </div>
+    <div className="min-w-0">
+      <p className="text-[10px] uppercase font-bold text-neutral-400 tracking-tight leading-none mb-1">
+        Pick up
+      </p>
+
+      <p className="text-sm font-semibold leading-tight break-words sm:truncate">
+        {trip.pickup}
+      </p>
+    </div>
+  </div>
+  
+  <div className="flex gap-3 items-start">
+    <div className="mt-1 w-4 h-4 border-2 border-neutral-900 bg-neutral-900 z-10 rounded-sm" />
+    
+    <div className="min-w-0">
+      <p className="text-[10px] uppercase font-bold text-neutral-400 tracking-tight leading-none mb-1">
+        Drop off
+      </p>
+
+      <p className="text-sm font-semibold leading-tight break-words sm:truncate">
+        {trip.drop}
+      </p>
+    </div>
+  </div>
+</div>
       </div>
 
       <div className="p-4 bg-neutral-50 flex gap-3">

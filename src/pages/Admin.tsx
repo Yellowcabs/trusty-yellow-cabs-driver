@@ -1228,15 +1228,15 @@ export function AdminPage() {
                              value={rideType} onChange={e => setRideType(e.target.value)}
                              className="w-full bg-neutral-50 border border-neutral-100 p-3.5 rounded-2xl text-sm font-bold focus:border-primary focus:bg-white outline-none appearance-none transition-all"
                           >
-                             <option value="mini/sedan">Mini/Sedan</option>
-                             <option value="sedan">Premium Sedan</option>
-                             <option value="suv">SUV</option>
-                             <option value="suv+">SUV Plus</option>
-                             <option value="innova">Innova</option>
-                             <option value="tempotravaller">Tempo Traveller</option>
-                             <option value="urbania">Urbania</option>
-                             <option value="touristbus">Tourist Bus</option>
-                             <option value="coustom">Custom</option>
+                        <option value="mini/sedan">Mini / Sedan</option>
+<option value="sedan">Premium Sedan</option>
+<option value="suv">SUV</option>
+<option value="suv+">SUV Plus</option>
+<option value="innova">Innova</option>
+<option value="tempo-traveller">Tempo Traveller</option>
+<option value="urbania">Urbania</option>
+<option value="tourist-bus">Tourist Bus</option>
+<option value="custom">Custom</option>
                           </select>
                        </div>
                     </div>
