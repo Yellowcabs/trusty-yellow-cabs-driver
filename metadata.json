@@ -1,0 +1,13 @@
+{
+  "name": "Remix: Trusty Yellow Cabs Driver",
+  "description": "Premium real-time driver application for Trusty Yellow Cabs with a modern red and white theme. Features include live trip requests, admin management, and Google Sheets synchronization.",
+  "requestFramePermissions": [
+    "geolocation",
+    "screen-wake-lock"
+  ],
+  "majorCapabilities": [
+    "Real-time trip management",
+    "Admin dashboard",
+    "Multilingual support"
+  ]
+}
