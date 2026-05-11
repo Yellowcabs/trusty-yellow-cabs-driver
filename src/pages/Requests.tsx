@@ -1,311 +1,101 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Info, BellRing } from 'lucide-react';
-
+import { Search, MapPin, Navigation, Info, BellRing } from 'lucide-react';
 import { useTrips } from '../context/TripContext';
 import { useAuth } from '../context/AuthContext';
-
 import { TripCard } from '../components/TripCard';
 
-import { supabase } from '../lib/supabase';
-
-import {
-  requestNotificationPermission,
-  messaging,
-  onMessage
-} from '../firebase';
-
 export function RequestsPage() {
-
   const { driver } = useAuth();
+  const { pendingTrips, acceptTrip, rejectTrip } = useTrips();
+  const [permission, setPermission] = React.useState(typeof Notification !== 'undefined' ? Notification.permission : 'denied');
 
-  const {
-    pendingTrips,
-    acceptTrip,
-    rejectTrip
-  } = useTrips();
-
-  const [permission, setPermission] =
-    React.useState(
-      typeof Notification !== 'undefined'
-        ? Notification.permission
-        : 'denied'
-    );
-
-  // FOREGROUND NOTIFICATION
-  React.useEffect(() => {
-
-    if (!messaging) return;
-
-    const unsubscribe = onMessage(
-      messaging,
-      (payload) => {
-
-        console.log('FCM:', payload);
-
-        // PLAY SOUND
-        const audio =
-          new Audio('/trip.mp3');
-
-        audio.play().catch((err) => {
-          console.log(err);
-        });
-
-        // SHOW NOTIFICATION
-        if (
-          Notification.permission ===
-          'granted'
-        ) {
-
-          new Notification(
-            payload.notification?.title ||
-              'New Ride Request 🚖',
-
-            {
-              body:
-                payload.notification?.body ||
-                'New trip available',
-
-              icon: '/icon-192.png'
-            }
-          );
-        }
-      }
-    );
-
-    return () => {
-      unsubscribe();
-    };
-
-  }, []);
-
-  // BLOCKED DRIVER
   if (driver?.isBlocked) {
-
     return (
       <div className="min-h-screen bg-red-600 flex flex-col items-center justify-center p-8 text-center text-white">
-
-        <h2 className="text-3xl font-black mb-2">
-          ACCESS DENIED
-        </h2>
-
-        <p className="text-white/80 font-medium">
-          Your account is blocked.
-        </p>
-
+        <h2 className="text-3xl font-black mb-2">ACCESS DENIED</h2>
+        <p className="text-white/80 font-medium">Your account is blocked.</p>
       </div>
     );
   }
 
-  // ENABLE NOTIFICATIONS
-  const requestPermission =
-    async () => {
-
-      const token =
-        await requestNotificationPermission();
-
-      console.log(
-        'FCM TOKEN:',
-        token
-      );
-
-      // SAVE TOKEN
-      if (
-        token &&
-        driver?.id
-      ) {
-
-        await supabase
-          .from('drivers')
-          .update({
-            fcm_token: token
-          })
-          .eq(
-            'id',
-            driver.id
-          );
-      }
-
-      setPermission(
-        Notification.permission
-      );
-    };
+  const requestPermission = () => {
+    if (typeof Notification !== 'undefined') {
+      Notification.requestPermission().then(setPermission);
+    }
+  };
 
   return (
-
     <div className="pb-32 page-enter-active">
-
       <header className="px-6 pt-12 pb-6 flex justify-between items-end">
-
         <div>
-
-          <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">
-            Near You
-          </p>
-
-          <h1 className="text-3xl font-black text-neutral-900">
-            Trip Requests
-          </h1>
-
+          <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">Near You</p>
+          <h1 className="text-3xl font-black text-neutral-900">Trip Requests</h1>
         </div>
+      <div className="flex flex-col items-end gap-3">
 
-        <div className="flex flex-col items-end gap-3">
+  {permission !== "granted" && (
+    <button
+      onClick={requestPermission}
+      className="flex items-center gap-2 bg-white/90 backdrop-blur-md text-amber-600 px-4 py-2 rounded-2xl shadow-sm border border-amber-100 text-[11px] font-semibold active:scale-95 transition"
+    >
+      <BellRing size={16} className="text-amber-500" />
+      Enable Alerts
+    </button>
+  )}
 
-          {permission !==
-            'granted' && (
-
-            <button
-              onClick={
-                requestPermission
-              }
-
-              className="flex items-center gap-2 bg-white/90 backdrop-blur-md text-amber-600 px-4 py-2 rounded-2xl shadow-sm border border-amber-100 text-[11px] font-semibold active:scale-95 transition"
-            >
-
-              <BellRing
-                size={16}
-                className="text-amber-500"
-              />
-
-              Enable Alerts
-
-            </button>
-          )}
-
-          <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md text-emerald-600 px-4 py-2 rounded-2xl shadow-sm border border-emerald-100 text-[11px] font-semibold">
-
-            <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse" />
-
-            Active Radar
-
-          </div>
-
+  <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md text-emerald-600 px-4 py-2 rounded-2xl shadow-sm border border-emerald-100 text-[11px] font-semibold">
+    <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse" />
+    Active Radar
+  </div>
         </div>
-
       </header>
 
       <main className="px-6 space-y-6">
-
         <AnimatePresence mode="popLayout">
-
-          {pendingTrips.length >
-          0 ? (
-
+          {pendingTrips.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-
-              {pendingTrips.map(
-                (trip: any) => (
-
-                  <div
-                    key={trip.id}
-                  >
-
-                    <TripCard
-                      trip={trip}
-
-                      onAccept={
-                        acceptTrip
-                      }
-
-                      onReject={
-                        rejectTrip
-                      }
-                    />
-
-                  </div>
-                )
-              )}
-
+              {pendingTrips.map((trip: any) => (
+                <div key={trip.id}>
+                  <TripCard 
+                    trip={trip} 
+                    onAccept={acceptTrip}
+                    onReject={rejectTrip} 
+                  />
+                </div>
+              ))}
             </div>
-
           ) : (
-
-            <motion.div
-              initial={{
-                opacity: 0
-              }}
-
-              animate={{
-                opacity: 1
-              }}
-
-              className="flex flex-col items-center justify-center pt-20"
+            <motion.div 
+               initial={{ opacity: 0 }}
+               animate={{ opacity: 1 }}
+               className="flex flex-col items-center justify-center pt-20"
             >
-
-              <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center premium-shadow mb-6 relative">
-
-                <Search
-                  size={32}
-                  className="text-primary/20"
-                />
-
-                <motion.div
-                  animate={{
-                    scale: [
-                      1,
-                      1.5
-                    ],
-
-                    opacity: [
-                      0.3,
-                      0
-                    ]
-                  }}
-
-                  transition={{
-                    repeat:
-                      Infinity,
-
-                    duration: 2
-                  }}
-
-                  className="absolute inset-0 border-2 border-primary rounded-full"
-                />
-
-              </div>
-
-              <h3 className="text-xl font-bold text-neutral-900">
-
-                Searching for trips...
-
-              </h3>
-
-              <p className="text-sm text-neutral-400 mt-2 font-medium">
-
-                Sit tight,
-                we're scanning your area.
-
-              </p>
-
+               <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center premium-shadow mb-6 relative">
+                 <Search size={32} className="text-primary/20" />
+                 <motion.div 
+                    animate={{ scale: [1, 1.5], opacity: [0.3, 0] }}
+                    transition={{ repeat: Infinity, duration: 2 }}
+                    className="absolute inset-0 border-2 border-primary rounded-full"
+                 />
+               </div>
+               <h3 className="text-xl font-bold text-neutral-900">Searching for trips...</h3>
+               <p className="text-sm text-neutral-400 mt-2 font-medium">Sit tight, we're scanning your area.</p>
             </motion.div>
           )}
-
         </AnimatePresence>
 
-        {pendingTrips.length >
-          0 && (
-
+        {pendingTrips.length > 0 && (
           <div className="flex items-center gap-3 bg-blue-50 p-4 rounded-2xl border border-blue-100">
-
-            <Info
-              className="text-blue-500 flex-shrink-0"
-              size={20}
-            />
-
-            <p className="text-xs text-blue-700 font-bold leading-tight">
-
-              Fastest fingers first!
-              Trip requests are sent to
-              multiple drivers
-              simultaneously.
-
-            </p>
-
+             <Info className="text-blue-500 flex-shrink-0" size={20} />
+             <p className="text-xs text-blue-700 font-bold leading-tight">
+               Fastest fingers first! Trip requests are sent to multiple drivers simultaneously.
+             </p>
           </div>
         )}
-
       </main>
 
+      {/* Notifications and Audio are handled by TripProvider context */}
     </div>
   );
 }
