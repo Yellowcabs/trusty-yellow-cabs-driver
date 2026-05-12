@@ -4,6 +4,7 @@ import { Search, MapPin, Navigation, Info, BellRing } from 'lucide-react';
 import { useTrips } from '../context/TripContext';
 import { useAuth } from '../context/AuthContext';
 import { TripCard } from '../components/TripCard';
+import { fcmService } from '../services/fcmService';
 
 export function RequestsPage() {
   const { driver } = useAuth();
@@ -21,8 +22,15 @@ export function RequestsPage() {
 
   const requestPermission = () => {
     if (typeof Notification !== 'undefined') {
-      Notification.requestPermission().then(setPermission);
+      Notification.requestPermission().then((res) => {
+        setPermission(res);
+        if (res === 'granted' && driver && driver.id !== 'admin') {
+          fcmService.requestPermission(driver.id);
+        }
+      });
     }
+    // Explicitly unlock audio on user action
+    fcmService.unlockAudio();
   };
 
   return (

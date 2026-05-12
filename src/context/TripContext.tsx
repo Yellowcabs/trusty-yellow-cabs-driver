@@ -26,26 +26,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   const [pendingTrips, setPendingTrips] = useState<Trip[]>([]);
   const [allTrips, setAllTrips] = useState<Trip[]>([]);
   const [activeTrip, setActiveTrip] = useState<Trip | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastTripIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    // Request notification permission
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission === 'default') {
-        Notification.requestPermission();
-      }
-    }
-    
-    // Initialize notification audio
-    audioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-  }, []);
-
-  const playNotificationSound = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.play().catch(e => console.log('Audio play failed:', e));
-    }
-  }, []);
 
   const showNotification = useCallback((trip: any) => {
     const title = 'New Trip Request! 🚕';
@@ -78,8 +59,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         Notification.requestPermission();
       }
     }
-    playNotificationSound();
-  }, [playNotificationSound]);
+  }, []);
 
   const updatePendingTrips = useCallback((trips: Trip[]) => {
     if (!driver?.isOnline) {

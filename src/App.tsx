@@ -14,6 +14,7 @@ import { OfficePayPage } from './pages/OfficePay';
 import { BottomNav } from './components/BottomNav';
 import { ActiveTripScreen } from './components/ActiveTripScreen';
 import { LocationTracker } from './components/LocationTracker';
+import { NotificationManager } from './components/NotificationManager';
 import { Car } from 'lucide-react';
 
 import { APIProvider } from '@vis.gl/react-google-maps';
@@ -86,6 +87,7 @@ export default function App() {
     <APIProvider apiKey={apiKey} libraries={['places', 'marker', 'geometry']}>
       <AuthProvider>
         <TripProvider>
+          <NotificationManager />
           <LocationTracker />
           <BrowserRouter>
             <Layout />

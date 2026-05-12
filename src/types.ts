@@ -19,6 +19,7 @@ export interface Driver {
   longitude?: number;
   heading?: number;
   lastSeen?: string;
+  fcmToken?: string;
 }
 
 export interface Trip {

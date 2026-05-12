@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Driver } from '../types';
 
+import { fcmService } from '../services/fcmService';
+
 interface AuthContextType {
   driver: Driver | null;
   login: (id: string, pin: string) => Promise<boolean>;
@@ -116,6 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
+    fcmService.stopTripSound();
     setDriver(null);
     localStorage.removeItem('trusty_driver');
   };

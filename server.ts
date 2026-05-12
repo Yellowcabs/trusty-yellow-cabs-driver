@@ -4,8 +4,21 @@ import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
+import admin from "firebase-admin";
 
 dotenv.config();
+
+// Initialize Firebase Admin
+if (!admin.apps.length) {
+  try {
+    admin.initializeApp({
+      projectId: process.env.FIREBASE_PROJECT_ID || "gen-lang-client-0592717447",
+    });
+    console.log("Firebase Admin initialized");
+  } catch (error) {
+    console.error("Firebase Admin initialization error:", error);
+  }
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -96,7 +109,49 @@ app.post("/api/trips", async (req, res) => {
       .insert([req.body])
       .select();
     if (error) throw error;
-    res.json(data[0]);
+    const newTrip = data[0];
+
+    // Background push notification to online drivers
+    supabase.from('drivers')
+      .select('fcm_token')
+      .eq('is_online', true)
+      .not('fcm_token', 'is', null)
+      .then(({ data: onlineDrivers }) => {
+        if (onlineDrivers && onlineDrivers.length > 0) {
+          const tokens = onlineDrivers.map(d => d.fcm_token).filter(t => !!t) as string[];
+          if (tokens.length > 0) {
+            admin.messaging().sendEachForMulticast({
+              notification: {
+                title: "New Trip Request! 🚕",
+                body: `Pickup: ${newTrip.pickup} to ${newTrip.drop}`,
+              },
+              data: {
+                type: "NEW_TRIP",
+                tripId: newTrip.id,
+                url: "/requests"
+              },
+              tokens: tokens,
+              android: {
+                priority: 'high',
+                notification: {
+                  sound: 'default',
+                  channelId: 'trip-requests'
+                }
+              },
+              apns: {
+                payload: {
+                  aps: {
+                    sound: 'default',
+                    badge: 1
+                  }
+                }
+              }
+            }).catch(e => console.error("FCM Error:", e));
+          }
+        }
+      }).catch(e => console.error("Supabase Drivers Fetch Error:", e));
+
+    res.json(newTrip);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

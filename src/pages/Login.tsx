@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { cn } from '../lib/utils';
+import { fcmService } from '../services/fcmService';
 
 export function LoginPage() {
   const [id, setId] = useState('');
@@ -18,6 +19,10 @@ export function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Unlock audio context on user interaction (form submit)
+    fcmService.unlockAudio();
+
     setIsLoading(true);
     setError('');
     

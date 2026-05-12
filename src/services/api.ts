@@ -131,6 +131,9 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
  * 
  * -- Add office_fee to existing drivers table
  * ALTER TABLE drivers ADD COLUMN IF NOT EXISTS office_fee NUMERIC DEFAULT 0;
+ * 
+ * -- Add fcm_token to drivers table for push notifications
+ * ALTER TABLE drivers ADD COLUMN IF NOT EXISTS fcm_token TEXT;
  */
 
 export async function fetchTrips(filters?: { status?: Trip['status']; driverId?: string; limit?: number }): Promise<Trip[]> {
@@ -447,7 +450,8 @@ export async function fetchDrivers(filters?: { isOnline?: boolean; search?: stri
         latitude: row.latitude,
         longitude: row.longitude,
         heading: row.heading,
-        lastSeen: row.last_seen
+        lastSeen: row.last_seen,
+        fcmToken: row.fcm_token
       }));
     }
 
@@ -612,7 +616,8 @@ export async function getDriverByLogin(identifier: string, pin: string): Promise
       latitude: data.latitude,
       longitude: data.longitude,
       heading: data.heading,
-      lastSeen: data.last_seen
+      lastSeen: data.last_seen,
+      fcmToken: data.fcm_token
     };
   } catch (e: any) {
     console.error('Supabase login error:', e.message || e);
@@ -702,6 +707,22 @@ export async function updateOfficeFeeApi(driverId: string, amount: number): Prom
     return true;
   } catch (e: any) {
     console.error('Supabase update office fee error:', e.message || e);
+    return false;
+  }
+}
+
+export async function updateFcmTokenApi(driverId: string, token: string | null): Promise<boolean> {
+  try {
+    if (!isSupabaseConfigured) return false;
+    const { error } = await supabase
+      .from('drivers')
+      .update({ fcm_token: token })
+      .eq('id', driverId);
+
+    if (error) throw error;
+    return true;
+  } catch (e: any) {
+    console.error('Supabase update fcm token error:', e.message || e);
     return false;
   }
 }
