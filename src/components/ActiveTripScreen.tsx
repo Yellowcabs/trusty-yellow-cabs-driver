@@ -244,7 +244,7 @@ export function ActiveTripScreen() {
                 CALL NOW
               </a>
               <a 
-                href={`https://wa.me/${activeTrip.customerPhone.replace(/[^0-9]/g, '')}`}
+                href={`https://wa.me/${(activeTrip.customerPhone || '').replace(/[^0-9]/g, '')}`}
                 target="_blank"
                 rel="noreferrer"
                 className="w-16 h-16 rounded-2xl bg-green-500 text-white flex items-center justify-center active:scale-95 transition-all shadow-lg shadow-green-500/20"

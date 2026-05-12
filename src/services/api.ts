@@ -39,7 +39,7 @@ import { Trip, Driver } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { getBaseUrl } from '../lib/config';
 
-const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor;
+const isCapacitor = typeof window !== 'undefined' && ((window as any).Capacitor || (window as any).webkit?.messageHandlers?.bridge || navigator.userAgent.includes('Capacitor'));
 
 async function safeFetch(url: string, options: any = {}): Promise<Response> {
   if (isCapacitor) {
@@ -49,16 +49,17 @@ async function safeFetch(url: string, options: any = {}): Promise<Response> {
       
       const config: any = {
         url,
-        headers: options.headers || {},
+        headers: {
+          ...options.headers,
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
       };
-
-      if (!config.headers['Accept']) {
-        config.headers['Accept'] = 'application/json';
-      }
 
       if (options.body) {
         if (typeof options.body === 'string') {
           try {
+            // CapacitorHttp prefers objects for application/json
             config.data = JSON.parse(options.body);
             if (!config.headers['Content-Type']) {
               config.headers['Content-Type'] = 'application/json';
@@ -81,12 +82,17 @@ async function safeFetch(url: string, options: any = {}): Promise<Response> {
         status: response.status,
         json: async () => response.data,
         text: async () => typeof response.data === 'string' ? response.data : JSON.stringify(response.data),
-        headers: new Headers(response.headers)
+        headers: new Headers(response.headers as any)
       } as Response;
     } catch (e: any) {
       console.error('[SafeFetch] CapacitorHttp Error:', e);
-      // Fallback to fetch only if CapacitorHttp actually failed or is missing
-      return fetch(url, options);
+      // Ensure we don't crash if CapacitorHttp is missing or fails
+      try {
+         return await fetch(url, options);
+      } catch (fetchErr) {
+         console.error('[SafeFetch] Both CapacitorHttp and window.fetch failed', fetchErr);
+         throw e;
+      }
     }
   }
   return fetch(url, options);
@@ -808,7 +814,7 @@ export async function updateLocationApi(driverId: string, lat: number, lng: numb
 export async function uploadDriverPhoto(file: File, driverId: string): Promise<string | null> {
   try {
     if (!isSupabaseConfigured) return null;
-    const fileExt = file?.name?.split('.').pop() || 'jpg';
+    const fileExt = (file?.name || 'photo.jpg').split('.').pop() || 'jpg';
     const fileName = `${driverId}-${Math.random()}.${fileExt}`;
     const filePath = `${fileName}`; // Just put in root of bucket or a subfolder
 

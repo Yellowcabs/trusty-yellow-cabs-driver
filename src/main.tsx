@@ -13,6 +13,17 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+if (typeof window !== 'undefined') {
+  window.onerror = function(message, source, lineno, colno, error) {
+    console.error('[Global Error]', { message, source, lineno, colno, error });
+    return false;
+  };
+
+  window.onunhandledrejection = function(event) {
+    console.error('[Global Promise Rejection]', event.reason);
+  };
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

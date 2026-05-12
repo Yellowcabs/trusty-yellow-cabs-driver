@@ -33,35 +33,53 @@ class FCMService {
   async requestPermission(driverId: string) {
     if (typeof window === 'undefined') return;
 
-    const isCapacitor = (window as any).Capacitor;
+    const isCapacitor = (window as any).Capacitor || (window as any).webkit?.messageHandlers?.bridge || navigator.userAgent.includes('Capacitor');
 
     if (isCapacitor) {
       try {
+        console.log('[FCM] Starting Capacitor Push Setup...');
         const { PushNotifications } = await import('@capacitor/push-notifications');
         const { LocalNotifications } = await import('@capacitor/local-notifications');
         
+        if (!PushNotifications) {
+          console.warn('[FCM] PushNotifications plugin not found');
+          return null;
+        }
+
         let permStatus = await PushNotifications.checkPermissions();
-        if (permStatus.receive === 'prompt') {
+        console.log('[FCM] Current Perms:', permStatus.receive);
+
+        if (permStatus.receive === 'prompt' || permStatus.receive === 'denied') {
           permStatus = await PushNotifications.requestPermissions();
         }
 
         if (permStatus.receive === 'granted') {
-          await PushNotifications.register();
+          // Register with Apple / Google for tokens
+          await PushNotifications.register().catch(e => console.error('[FCM] Register Error:', e));
           
-          await LocalNotifications.requestPermissions();
+          await LocalNotifications.requestPermissions().catch(e => console.warn('[FCM] Local Notification Perms Fail:', e));
 
           // On Capacitor, the token is received via listeners
           PushNotifications.addListener('registration', async (token) => {
-            console.log('Capacitor Push Token:', token.value);
-            await updateFcmTokenApi(driverId, token.value);
+            console.log('[FCM] Capacitor Push Token:', token.value);
+            if (token.value) {
+              await updateFcmTokenApi(driverId, token.value).catch(e => console.error('[FCM] Failed to sync token to backend:', e));
+            }
           });
 
           PushNotifications.addListener('registrationError', (error) => {
-            console.error('Capacitor Push Registration Error:', error);
+            console.error('[FCM] Capacitor Push Registration Error:', JSON.stringify(error));
+          });
+
+          PushNotifications.addListener('pushNotificationReceived', (notification) => {
+             console.log('[FCM] Push Notification Received:', notification);
+             if (notification.data?.type === 'NEW_TRIP') {
+               this.startTripSound();
+             }
           });
         }
       } catch (e) {
-        console.error('Capacitor Push setup failed:', e);
+        console.error('[FCM] Capacitor Push CRITICAL setup failed:', e);
       }
       return null;
     }
