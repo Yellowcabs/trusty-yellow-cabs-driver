@@ -23,9 +23,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const savedDriver = localStorage.getItem('trusty_driver');
     if (savedDriver) {
-      setDriver(JSON.parse(savedDriver));
-      // Refresh status on load if possible
-      refreshDriverStatus(JSON.parse(savedDriver).id);
+      try {
+        const parsed = JSON.parse(savedDriver);
+        if (parsed && parsed.id) {
+          setDriver(parsed);
+          // Refresh status on load if possible
+          refreshDriverStatus(parsed.id);
+        }
+      } catch (e) {
+        console.error('[Auth] Failed to parse saved driver:', e);
+        localStorage.removeItem('trusty_driver');
+      }
     }
     setIsLoading(false);
   }, []);

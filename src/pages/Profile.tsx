@@ -73,7 +73,7 @@ export function ProfilePage() {
                 <p className="text-[12px] font-black text-neutral-400 uppercase tracking-widest">Active Driver</p>
              </div>
             <p className="mt-4 text-base font-extrabold bg-neutral-200 text-neutral-900 px-4 py-2 rounded-xl uppercase tracking-widest inline-block">
-  #{driver.id.toUpperCase()}
+  #{driver.id?.toUpperCase() || 'UNKNOWN'}
 </p>
           </div>
         </div>
