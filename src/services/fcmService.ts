@@ -34,6 +34,18 @@ class FCMService {
     if (!messaging || typeof window === 'undefined') return;
 
     try {
+      // Check for Service Worker support
+      if (!('serviceWorker' in navigator)) {
+        console.warn('Service Worker not supported in this environment');
+        return null;
+      }
+
+      // Check for Notification support
+      if (!('Notification' in window)) {
+        console.warn('Notifications not supported in this environment');
+        return null;
+      }
+
       // Register the service worker explicitly
       const registration = await navigator.serviceWorker.register('/sw.js', {
         scope: '/'

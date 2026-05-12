@@ -89,33 +89,44 @@ export function LoginPage() {
 
     setIsLoading(true);
     setError('');
+    setDebugLog(prev => prev + '\nAttempting LOGIN...');
     
-    const success = await login(id, pin);
-    if (success) {
-      if (isAdminRequest) {
-        if (id !== 'admin') {
-          setError('Invalid Admin Credentials.');
-          setIsLoading(false);
-          return;
+    try {
+      const success = await login(id, pin);
+      setDebugLog(prev => prev + `\nLogin Result: ${success}`);
+      
+      if (success) {
+        if (isAdminRequest) {
+          if (id !== 'admin') {
+            setError('Invalid Admin Credentials.');
+            setIsLoading(false);
+            return;
+          }
+          setDebugLog(prev => prev + '\nNavigating to Admin...');
+          navigate('/admin');
+        } else {
+          if (id === 'admin') {
+            setError('Please use the Admin Portal to login.');
+            setIsLoading(false);
+            return;
+          }
+          setDebugLog(prev => prev + '\nNavigating to Home...');
+          navigate('/');
         }
-        navigate('/admin');
       } else {
-        if (id === 'admin') {
-          setError('Please use the Admin Portal to login.');
-          setIsLoading(false);
-          return;
+        setDebugLog(prev => prev + '\nLogin FAILED');
+        // Check if specifically blocked
+        const { getDriverByLogin } = await import('../services/api');
+        const testDriver = await getDriverByLogin(id, pin);
+        if (testDriver?.isBlocked) {
+          setError('Your account is BLOCKED. Contact Support.');
+        } else {
+          setError('Invalid Driver ID or Password/PIN');
         }
-        navigate('/');
       }
-    } else {
-      // Check if specifically blocked
-      const { getDriverByLogin } = await import('../services/api');
-      const testDriver = await getDriverByLogin(id, pin);
-      if (testDriver?.isBlocked) {
-        setError('Your account is BLOCKED. Contact Support.');
-      } else {
-        setError('Invalid Driver ID or Password/PIN');
-      }
+    } catch (e: any) {
+      setDebugLog(prev => prev + `\nEXCEPTION during login: ${e.message}`);
+      setError(`Login Error: ${e.message}`);
     }
     setIsLoading(false);
   };
