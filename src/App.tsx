@@ -80,9 +80,20 @@ function Layout() {
   );
 }
 
+import { getBaseUrl } from './lib/config';
+
 export default function App() {
   const apiKey = process.env.GOOGLE_MAPS_PLATFORM_KEY || import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
   
+  useEffect(() => {
+    console.log('[DEBUG] App Start');
+    console.log('[DEBUG] Hostname:', window.location.hostname);
+    console.log('[DEBUG] Protocol:', window.location.protocol);
+    console.log('[DEBUG] Backend URL:', getBaseUrl());
+    const isCapacitor = (window as any).Capacitor || (window as any).webkit?.messageHandlers?.bridge;
+    console.log('[DEBUG] Capacitor Detect:', !!isCapacitor);
+  }, []);
+
   return (
     <APIProvider apiKey={apiKey} libraries={['places', 'marker', 'geometry']}>
       <AuthProvider>

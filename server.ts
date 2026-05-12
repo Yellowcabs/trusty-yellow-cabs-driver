@@ -193,6 +193,94 @@ app.patch("/api/drivers/:id/online", async (req, res) => {
   }
 });
 
+app.patch("/api/drivers/:id/location", async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: "Database not configured" });
+  try {
+    const { latitude, longitude, heading, lastSeen } = req.body;
+    const updateData: any = { 
+      latitude, 
+      longitude, 
+      last_seen: lastSeen || new Date().toISOString() 
+    };
+    if (heading !== undefined) updateData.heading = heading;
+
+    const { data, error } = await supabase
+      .from('drivers')
+      .update(updateData)
+      .eq('id', req.params.id)
+      .select();
+    if (error) throw error;
+    res.json(data[0] || { success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch("/api/trips/:id", async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: "Database not configured" });
+  try {
+    const { data, error } = await supabase
+      .from('trips')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .select();
+    if (error) throw error;
+    res.json(data[0]);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/drivers/:id", async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: "Database not configured" });
+  try {
+    const { data, error } = await supabase
+      .from('drivers')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/login", async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: "Database not configured" });
+  const { identifier, pin } = req.body;
+  try {
+    // Try login by ID
+    let { data, error } = await supabase
+      .from('drivers')
+      .select('*')
+      .eq('id', identifier)
+      .eq('pin', pin)
+      .single();
+
+    // If ID fails, try login by Phone
+    if (error || !data) {
+      const { data: phoneData, error: phoneError } = await supabase
+        .from('drivers')
+        .select('*')
+        .eq('phone', identifier)
+        .eq('pin', pin)
+        .single();
+      
+      data = phoneData;
+      error = phoneError;
+    }
+
+    if (error || !data) {
+      return res.status(401).json({ error: "Invalid ID or PIN" });
+    }
+
+    res.json(data);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 async function setupApp() {
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

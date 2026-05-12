@@ -327,7 +327,6 @@ export async function updateTripFareApi(tripId: string, fare: number): Promise<{
 
 export async function updateTripStatus(tripId: string, status: Trip['status'], driverId?: string, extraData?: any): Promise<{ success: boolean; error?: string }> {
   try {
-    if (!isSupabaseConfigured) throw new Error('Supabase not configured');
     const updateData: any = { status, ...extraData };
     if (driverId) updateData.driver_id = driverId;
     if (status === 'PENDING') {
@@ -336,6 +335,16 @@ export async function updateTripStatus(tripId: string, status: Trip['status'], d
     if (status === 'STARTED') updateData.start_time = new Date().toISOString();
     if (status === 'COMPLETED') updateData.end_time = new Date().toISOString();
 
+    // Try backend first
+    const response = await fetch(`${getBaseUrl()}/api/trips/${tripId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updateData)
+    });
+
+    if (response.ok) return { success: true };
+
+    if (!isSupabaseConfigured) throw new Error('Supabase not configured');
     const { error } = await supabase
       .from('trips')
       .update(updateData)
@@ -548,15 +557,22 @@ export async function createDriverApi(driverData: Omit<Driver, 'rating' | 'total
 }
 
 export async function updateDriverOnlineStatus(driverId: string, isOnline: boolean): Promise<boolean> {
+  const url = `${getBaseUrl()}/api/drivers/${driverId}/online`;
+  console.log(`[API] PATCH ${url} | body:`, { isOnline });
   try {
     // Try backend first
-    const response = await fetch(`${getBaseUrl()}/api/drivers/${driverId}/online`, {
+    const response = await fetch(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ isOnline })
     });
 
-    if (response.ok) return true;
+    if (response.ok) {
+      console.log('[API] PATCH online status success');
+      return true;
+    }
+
+    console.warn('[API] PATCH online status failed, status:', response.status);
 
     // Fallback to client-side Supabase
     if (!isSupabaseConfigured) return false;
@@ -576,8 +592,39 @@ export async function updateDriverOnlineStatus(driverId: string, isOnline: boole
 
 export async function getDriverByLogin(identifier: string, pin: string): Promise<Driver | null> {
   try {
+    // Try backend first
+    const response = await fetch(`${getBaseUrl()}/api/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier, pin })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return {
+        id: data.id,
+        name: data.name,
+        phone: data.phone,
+        pin: data.pin,
+        vehicleModel: data.vehicle_model,
+        vehicleNumber: data.vehicle_number,
+        isOnline: data.is_online,
+        rating: Number(data.rating),
+        totalEarnings: Number(data.total_earnings),
+        completedRides: data.completed_rides,
+        avatarUrl: data.avatar_url,
+        isBlocked: data.is_blocked,
+        officeFee: Number(data.office_fee || 0),
+        latitude: data.latitude,
+        longitude: data.longitude,
+        heading: data.heading,
+        lastSeen: data.last_seen,
+        fcmToken: data.fcm_token
+      };
+    }
+
     if (!isSupabaseConfigured) return null;
-    // Try login by ID
+    // Fallback to direct client-side Supabase
     let { data, error } = await supabase
       .from('drivers')
       .select('*')
@@ -628,7 +675,6 @@ export async function getDriverByLogin(identifier: string, pin: string): Promise
 
 export async function updateLocationApi(driverId: string, lat: number, lng: number, heading?: number): Promise<boolean> {
   try {
-    if (!isSupabaseConfigured) return false;
     const updateData: any = { 
       latitude: lat, 
       longitude: lng,
@@ -639,6 +685,16 @@ export async function updateLocationApi(driverId: string, lat: number, lng: numb
       updateData.heading = heading;
     }
 
+    // Try backend first
+    const response = await fetch(`${getBaseUrl()}/api/drivers/${driverId}/location`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updateData)
+    });
+
+    if (response.ok) return true;
+
+    if (!isSupabaseConfigured) return false;
     const { error } = await supabase
       .from('drivers')
       .update(updateData)
