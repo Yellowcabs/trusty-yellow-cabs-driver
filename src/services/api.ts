@@ -39,6 +39,46 @@ import { Trip, Driver } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { getBaseUrl } from '../lib/config';
 
+const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor;
+
+async function safeFetch(url: string, options: any = {}): Promise<Response> {
+  if (isCapacitor) {
+    try {
+      const { CapacitorHttp } = await import('@capacitor/core');
+      const method = options.method || 'GET';
+      
+      const config: any = {
+        url,
+        headers: options.headers || { 'Accept': 'application/json' },
+      };
+
+      if (options.body) {
+        try {
+          config.data = JSON.parse(options.body);
+          if (!config.headers['Content-Type']) {
+            config.headers['Content-Type'] = 'application/json';
+          }
+        } catch (e) {
+          config.data = options.body;
+        }
+      }
+
+      const response = await (CapacitorHttp as any)[method.toLowerCase()](config);
+      
+      return {
+        ok: response.status >= 200 && response.status < 300,
+        status: response.status,
+        json: async () => response.data,
+        text: async () => typeof response.data === 'string' ? response.data : JSON.stringify(response.data),
+        headers: new Headers(response.headers)
+      } as Response;
+    } catch (e) {
+      console.error('[SafeFetch] CapacitorHttp Error, falling back to web fetch:', e);
+    }
+  }
+  return fetch(url, options);
+}
+
 /**
  * SUPABASE SQL SCHEMA (Run this in Supabase SQL Editor)
  * 
@@ -148,7 +188,7 @@ export async function fetchTrips(filters?: { status?: Trip['status']; driverId?:
     const url = `${getBaseUrl()}/api/trips${queryStr ? '?' + queryStr : ''}`;
 
     // Try to fetch from backend first
-    const response = await fetch(url);
+    const response = await safeFetch(url);
     if (response.ok) {
       const data = await response.json();
       return data.map((row: any) => ({
@@ -259,7 +299,7 @@ export async function createTripApi(trip: Omit<Trip, 'id' | 'status' | 'timestam
     };
 
     // Try backend first
-    const response = await fetch(`${getBaseUrl()}/api/trips`, {
+    const response = await safeFetch(`${getBaseUrl()}/api/trips`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newTripRow)
@@ -336,7 +376,7 @@ export async function updateTripStatus(tripId: string, status: Trip['status'], d
     if (status === 'COMPLETED') updateData.end_time = new Date().toISOString();
 
     // Try backend first
-    const response = await fetch(`${getBaseUrl()}/api/trips/${tripId}`, {
+    const response = await safeFetch(`${getBaseUrl()}/api/trips/${tripId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updateData)
@@ -440,7 +480,7 @@ export async function fetchDrivers(filters?: { isOnline?: boolean; search?: stri
     const url = `${getBaseUrl()}/api/drivers${queryStr ? '?' + queryStr : ''}`;
 
     // Try to fetch from backend first
-    const response = await fetch(url);
+    const response = await safeFetch(url);
     if (response.ok) {
       const data = await response.json();
       return data.map((row: any) => ({
@@ -561,7 +601,7 @@ export async function updateDriverOnlineStatus(driverId: string, isOnline: boole
   console.log(`[API] POST (Online Toggle) ${url} | body:`, { isOnline });
   try {
     // Try backend first - using POST instead of PATCH for better mobile compatibility
-    const response = await fetch(url, {
+    const response = await safeFetch(url, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
@@ -604,7 +644,7 @@ export async function updateDriverOnlineStatus(driverId: string, isOnline: boole
 export async function getDriverByLogin(identifier: string, pin: string): Promise<Driver | null> {
   try {
     // Try backend first
-    const response = await fetch(`${getBaseUrl()}/api/login`, {
+    const response = await safeFetch(`${getBaseUrl()}/api/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ identifier, pin })
@@ -697,7 +737,7 @@ export async function updateLocationApi(driverId: string, lat: number, lng: numb
     }
 
     // Try backend first
-    const response = await fetch(`${getBaseUrl()}/api/drivers/${driverId}/location`, {
+    const response = await safeFetch(`${getBaseUrl()}/api/drivers/${driverId}/location`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updateData)

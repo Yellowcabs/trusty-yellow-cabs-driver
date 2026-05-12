@@ -25,27 +25,55 @@ export function LoginPage() {
 
   const checkHealth = async () => {
     setDebugHealth('CHECKING');
-    setDebugLog('Starting fetch...');
+    setDebugLog('Starting health check...');
+    const url = `${getBaseUrl()}/api/health`;
+    
     try {
-      const url = `${getBaseUrl()}/api/health`;
+      // First try standard fetch
+      setDebugLog(prev => prev + '\nTrying fetch...');
       const res = await fetch(url, { 
         method: 'GET',
         headers: { 'Accept': 'application/json' }
       });
+      
       setDebugStatus(res.status);
       if (res.ok) {
         setDebugHealth('OK');
         const data = await res.json();
-        setDebugLog(`Success: ${JSON.stringify(data)}`);
+        setDebugLog(`Fetch Success: ${JSON.stringify(data)}`);
+        return;
       } else {
-        setDebugHealth('FAIL');
-        setDebugLog(`Error ${res.status}: ${await res.text()}`);
+        setDebugLog(prev => prev + `\nFetch failed ${res.status}`);
       }
     } catch (e: any) {
-      setDebugHealth('FAIL');
-      setDebugLog(`Fetch Error: ${e.message}`);
-      console.error(e);
+      setDebugLog(prev => prev + `\nFetch ERROR: ${e.message}`);
     }
+
+    // If fetch fails, try CapacitorHttp if available
+    try {
+      const isCapacitor = (window as any).Capacitor;
+      if (isCapacitor) {
+        setDebugLog(prev => prev + '\nTrying CapacitorHttp...');
+        const { CapacitorHttp } = await import('@capacitor/core');
+        const response = await CapacitorHttp.get({
+          url,
+          headers: { 'Accept': 'application/json' }
+        });
+        
+        setDebugStatus(response.status);
+        if (response.status >= 200 && response.status < 300) {
+          setDebugHealth('OK');
+          setDebugLog(`CapHttp Success! (Bypassed CORS)`);
+          return;
+        } else {
+          setDebugLog(prev => prev + `\nCapHttp failed ${response.status}`);
+        }
+      }
+    } catch (e: any) {
+      setDebugLog(prev => prev + `\nCapHttp ERROR: ${e.message}`);
+    }
+
+    setDebugHealth('FAIL');
   };
 
   const clearCache = () => {
