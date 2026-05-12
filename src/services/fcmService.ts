@@ -36,28 +36,55 @@ class FCMService {
     const isCapacitor = (window as any).Capacitor || (window as any).webkit?.messageHandlers?.bridge || navigator.userAgent.includes('Capacitor');
 
     if (isCapacitor) {
-      try {
-        console.log('[FCM] Starting Capacitor Push Setup...');
-        const { PushNotifications } = await import('@capacitor/push-notifications');
-        const { LocalNotifications } = await import('@capacitor/local-notifications');
-        
-        if (!PushNotifications) {
-          console.warn('[FCM] PushNotifications plugin not found');
-          return null;
-        }
+      // Run this in background to avoid blocking UI threads
+      (async () => {
+        try {
+          console.log('[FCM] Starting Capacitor Push Setup...');
+          const { PushNotifications } = await import('@capacitor/push-notifications');
+          
+          if (!PushNotifications) {
+            console.warn('[FCM] PushNotifications plugin not found');
+            return;
+          }
 
-        let permStatus = await PushNotifications.checkPermissions();
-        console.log('[FCM] Current Perms:', permStatus.receive);
+          const permStatus = await PushNotifications.checkPermissions();
+          console.log('[FCM] Current Perms:', permStatus.receive);
 
-        if (permStatus.receive === 'prompt' || permStatus.receive === 'denied') {
-          permStatus = await PushNotifications.requestPermissions();
-        }
+          if (permStatus.receive === 'prompt') {
+            const reqStatus = await PushNotifications.requestPermissions();
+            if (reqStatus.receive !== 'granted') {
+               console.log('[FCM] Permission denied by user');
+               return;
+            }
+          } else if (permStatus.receive === 'denied') {
+            console.log('[FCM] Permission already denied, not re-prompting here');
+            return;
+          }
 
-        if (permStatus.receive === 'granted') {
+          // At this point we likely have granted (or it was already granted)
+          
+          // Create channel for Android 8+
+          if ((window as any).Capacitor.getPlatform() === 'android') {
+            await PushNotifications.createChannel({
+              id: 'trips',
+              name: 'Trip Requests',
+              description: 'Alerts for nearby trip requests',
+              importance: 5,
+              visibility: 1,
+              vibration: true,
+              sound: 'trip.mp3'
+            }).catch(e => console.warn('[FCM] Channel creation failed:', e));
+          }
+
           // Register with Apple / Google for tokens
           await PushNotifications.register().catch(e => console.error('[FCM] Register Error:', e));
           
-          await LocalNotifications.requestPermissions().catch(e => console.warn('[FCM] Local Notification Perms Fail:', e));
+          try {
+            const { LocalNotifications } = await import('@capacitor/local-notifications');
+            await LocalNotifications.requestPermissions().catch(e => console.warn('[FCM] Local Notification Perms Fail:', e));
+          } catch (e) {
+            console.warn('[FCM] LocalNotifications import fail');
+          }
 
           // On Capacitor, the token is received via listeners
           PushNotifications.addListener('registration', async (token) => {
@@ -77,10 +104,10 @@ class FCMService {
                this.startTripSound();
              }
           });
+        } catch (e) {
+          console.error('[FCM] Capacitor Push Setup hidden failure:', e);
         }
-      } catch (e) {
-        console.error('[FCM] Capacitor Push CRITICAL setup failed:', e);
-      }
+      })();
       return null;
     }
 

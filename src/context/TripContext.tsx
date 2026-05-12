@@ -17,7 +17,7 @@ interface TripContextType {
   cancelTrip: (tripId: string) => Promise<{ success: boolean; error?: string }>;
   updateTripFare: (tripId: string, fare: number) => Promise<{ success: boolean; error?: string }>;
   refreshTrips: () => Promise<void>;
-  isActionLoading: string | null;
+  loadingTripIds: Set<string>;
 }
 
 const TripContext = createContext<TripContextType | undefined>(undefined);
@@ -328,11 +328,23 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(timerInterval);
   }, [updatePendingTrips]);
 
-  const [isActionLoading, setIsActionLoading] = useState<string | null>(null);
+  const [loadingTripIds, setLoadingTripIds] = useState<Set<string>>(new Set());
 
   const acceptTrip = async (tripId: string) => {
-    if (!driver || driver.isBlocked || isActionLoading) return;
-    setIsActionLoading(tripId);
+    if (!driver) {
+      console.warn('[TripAction] No driver, cannot accept');
+      return;
+    }
+    if (driver.isBlocked) {
+      console.warn('[TripAction] Driver blocked, cannot accept');
+      return;
+    }
+    if (loadingTripIds.has(tripId)) {
+      console.warn('[TripAction] Trip already loading:', tripId);
+      return;
+    }
+    
+    setLoadingTripIds(prev => new Set(prev).add(tripId));
     try {
       console.log(`[TripAction] Accepting trip: ${tripId}`);
       const result = await updateTripStatus(tripId, 'ACCEPTED', driver.id);
@@ -340,18 +352,23 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         await refreshTrips();
       } else {
         console.error('[TripAction] Accept Failed:', result.error);
-        await refreshTrips(); // Refresh to sync state
+        await refreshTrips(); 
       }
     } catch (e) {
       console.error('[TripAction] Accept Exception:', e);
     } finally {
-      setIsActionLoading(null);
+      setLoadingTripIds(prev => {
+        const next = new Set(prev);
+        next.delete(tripId);
+        return next;
+      });
     }
   };
   
   const releaseTrip = async (tripId: string, reason: string) => {
-    if (!driver || driver.isBlocked || isActionLoading) return;
-    setIsActionLoading(tripId);
+    if (!driver || driver.isBlocked || loadingTripIds.has(tripId)) return;
+    
+    setLoadingTripIds(prev => new Set(prev).add(tripId));
     try {
       const { releaseTripApi } = await import('../services/api');
       const trip = allTrips.find(t => t.id === tripId);
@@ -363,13 +380,29 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.error('[TripAction] Release Exception:', e);
     } finally {
-      setIsActionLoading(null);
+      setLoadingTripIds(prev => {
+        const next = new Set(prev);
+        next.delete(tripId);
+        return next;
+      });
     }
   };
   
   const rejectTrip = async (tripId: string) => {
-    if (!driver || driver.isBlocked || isActionLoading) return;
-    setIsActionLoading(tripId);
+    if (!driver) {
+      console.warn('[TripAction] No driver, cannot reject');
+      return;
+    }
+    if (driver.isBlocked) {
+      console.warn('[TripAction] Driver blocked, cannot reject');
+      return;
+    }
+    if (loadingTripIds.has(tripId)) {
+      console.warn('[TripAction] Trip already loading:', tripId);
+      return;
+    }
+    
+    setLoadingTripIds(prev => new Set(prev).add(tripId));
     try {
       const trip = allTrips.find(t => t.id === tripId);
       if (!trip) return;
@@ -377,14 +410,17 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       console.log(`[TripAction] Rejecting trip: ${tripId}`);
       const result = await rejectTripApi(tripId, driver.id, trip.rejectedBy || []);
       if (result.success) {
-        // Remove locally immediately for better UX
         setPendingTrips(prev => prev.filter(t => t.id !== tripId));
         await refreshTrips();
       }
     } catch (e) {
       console.error('[TripAction] Reject Exception:', e);
     } finally {
-      setIsActionLoading(null);
+      setLoadingTripIds(prev => {
+        const next = new Set(prev);
+        next.delete(tripId);
+        return next;
+      });
     }
   };
 
@@ -423,7 +459,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <TripContext.Provider value={{ pendingTrips, activeTrip, allTrips, acceptTrip, rejectTrip, releaseTrip, updateStatus, createTrip, cancelTrip, updateTripFare, refreshTrips, isActionLoading }}>
+    <TripContext.Provider value={{ pendingTrips, activeTrip, allTrips, acceptTrip, rejectTrip, releaseTrip, updateStatus, createTrip, cancelTrip, updateTripFare, refreshTrips, loadingTripIds }}>
       {children}
     </TripContext.Provider>
   );

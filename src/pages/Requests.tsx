@@ -8,7 +8,7 @@ import { fcmService } from '../services/fcmService';
 
 export function RequestsPage() {
   const { driver } = useAuth();
-  const { pendingTrips, acceptTrip, rejectTrip, isActionLoading } = useTrips();
+  const { pendingTrips, acceptTrip, rejectTrip, loadingTripIds } = useTrips();
   const [permission, setPermission] = React.useState(typeof Notification !== 'undefined' ? Notification.permission : 'denied');
 
   if (driver?.isBlocked) {
@@ -20,13 +20,16 @@ export function RequestsPage() {
     );
   }
 
-  const requestPermission = async () => {
+  const requestPermission = () => {
     const isCapacitor = (window as any).Capacitor;
     
+    // Unlock audio first
+    fcmService.unlockAudio();
+
     if (isCapacitor) {
       if (driver && driver.id !== 'admin') {
-        await fcmService.requestPermission(driver.id);
-        setPermission('granted'); // Assume handled or check status
+        fcmService.requestPermission(driver.id);
+        setPermission('granted');
       }
     } else if (typeof Notification !== 'undefined') {
       Notification.requestPermission().then((res) => {
@@ -36,8 +39,6 @@ export function RequestsPage() {
         }
       });
     }
-    // Explicitly unlock audio on user action
-    fcmService.unlockAudio();
   };
 
   return (
@@ -76,7 +77,7 @@ export function RequestsPage() {
                     trip={trip} 
                     onAccept={acceptTrip}
                     onReject={rejectTrip} 
-                    isLoading={isActionLoading === trip.id}
+                    isLoading={loadingTripIds.has(trip.id)}
                   />
                 </div>
               ))}
