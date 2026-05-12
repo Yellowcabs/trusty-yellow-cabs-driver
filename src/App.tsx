@@ -142,18 +142,7 @@ export default function App() {
       });
     }
 
-    // Connection Health Check
-    const checkConnection = async () => {
-      try {
-        const { fetchTrips } = await import('./services/api');
-        // We use a real API function to benefit from safeFetch
-        await fetchTrips({ limit: 1 });
-        console.log('[DEBUG] Connection Test: OK');
-      } catch (e) {
-        console.error('[DEBUG] Connection Test ERROR:', e);
-      }
-    };
-    checkConnection();
+    // Connection check happens on first meaningful use or in Login page debug tool
   }, []);
 
   return (

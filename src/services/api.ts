@@ -42,6 +42,8 @@ import { getBaseUrl } from '../lib/config';
 const isCapacitor = typeof window !== 'undefined' && ((window as any).Capacitor || (window as any).webkit?.messageHandlers?.bridge || navigator.userAgent.includes('Capacitor'));
 
 async function safeFetch(url: string, options: any = {}): Promise<Response> {
+  const isCapacitor = typeof window !== 'undefined' && ((window as any).Capacitor || (window as any).webkit?.messageHandlers?.bridge || navigator.userAgent.includes('Capacitor'));
+  
   if (isCapacitor) {
     try {
       const { CapacitorHttp } = await import('@capacitor/core');
@@ -54,13 +56,16 @@ async function safeFetch(url: string, options: any = {}): Promise<Response> {
           'Accept': 'application/json',
           'X-Requested-With': 'XMLHttpRequest'
         },
+        connectTimeout: 10000,
+        readTimeout: 10000
       };
 
       if (options.body) {
         if (typeof options.body === 'string') {
           try {
             // CapacitorHttp prefers objects for application/json
-            config.data = JSON.parse(options.body);
+            const parsed = JSON.parse(options.body);
+            config.data = parsed;
             if (!config.headers['Content-Type']) {
               config.headers['Content-Type'] = 'application/json';
             }
@@ -72,26 +77,31 @@ async function safeFetch(url: string, options: any = {}): Promise<Response> {
         }
       }
 
-      console.log(`[SafeFetch] ${method} ${url}`, config.data ? '(with body)' : '');
+      console.log(`[SafeFetch] ${method} ${url}`);
       const response = await (CapacitorHttp as any)[method.toLowerCase()](config);
       
-      console.log(`[SafeFetch] ${method} Response:`, response.status);
-
       return {
         ok: response.status >= 200 && response.status < 300,
         status: response.status,
-        json: async () => response.data,
+        json: async () => typeof response.data === 'string' ? JSON.parse(response.data) : response.data,
         text: async () => typeof response.data === 'string' ? response.data : JSON.stringify(response.data),
         headers: new Headers(response.headers as any)
       } as Response;
     } catch (e: any) {
       console.error('[SafeFetch] CapacitorHttp Error:', e);
-      // Ensure we don't crash if CapacitorHttp is missing or fails
+      // Fallback to fetch only if CapacitorHttp actually failed or is missing
       try {
          return await fetch(url, options);
       } catch (fetchErr) {
-         console.error('[SafeFetch] Both CapacitorHttp and window.fetch failed', fetchErr);
-         throw e;
+         console.error('[SafeFetch] BOTH failed', fetchErr);
+         // Return a mock failed response instead of throwing to prevent app crash
+         return {
+           ok: false,
+           status: 0,
+           json: async () => ({ error: 'Network failure' }),
+           text: async () => 'Network failure',
+           headers: new Headers()
+         } as Response;
       }
     }
   }
@@ -289,8 +299,12 @@ export async function fetchTrips(filters?: { status?: Trip['status']; driverId?:
     }));
   } catch (e: any) {
     console.error('Supabase fetch error:', e.message || e);
-    const stored = localStorage.getItem('trusty_trips_db');
-    return stored ? JSON.parse(stored) : [];
+    try {
+      const stored = localStorage.getItem('trusty_trips_db');
+      return stored ? JSON.parse(stored) : [];
+    } catch (parseErr) {
+      return [];
+    }
   }
 }
 
@@ -591,8 +605,12 @@ export async function fetchDrivers(filters?: { isOnline?: boolean; search?: stri
     }));
   } catch (e: any) {
     console.error('Supabase fetch drivers error:', e.message || e);
-    const stored = localStorage.getItem('trusty_drivers_db');
-    return stored ? JSON.parse(stored) : [];
+    try {
+      const stored = localStorage.getItem('trusty_drivers_db');
+      return stored ? JSON.parse(stored) : [];
+    } catch (parseErr) {
+      return [];
+    }
   }
 }
 

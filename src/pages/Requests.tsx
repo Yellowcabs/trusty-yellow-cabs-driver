@@ -8,7 +8,7 @@ import { fcmService } from '../services/fcmService';
 
 export function RequestsPage() {
   const { driver } = useAuth();
-  const { pendingTrips, acceptTrip, rejectTrip } = useTrips();
+  const { pendingTrips, acceptTrip, rejectTrip, isActionLoading } = useTrips();
   const [permission, setPermission] = React.useState(typeof Notification !== 'undefined' ? Notification.permission : 'denied');
 
   if (driver?.isBlocked) {
@@ -76,6 +76,7 @@ export function RequestsPage() {
                     trip={trip} 
                     onAccept={acceptTrip}
                     onReject={rejectTrip} 
+                    isLoading={isActionLoading === trip.id}
                   />
                 </div>
               ))}

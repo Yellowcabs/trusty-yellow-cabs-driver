@@ -9,10 +9,11 @@ interface TripCardProps {
   trip: Trip;
   onAccept?: (id: string) => void;
   onReject?: (id: string) => void;
+  isLoading?: boolean;
   className?: string;
 }
 
-export function TripCard({ trip, onAccept, onReject, className }: TripCardProps) {
+export function TripCard({ trip, onAccept, onReject, isLoading, className }: TripCardProps) {
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -104,16 +105,18 @@ export function TripCard({ trip, onAccept, onReject, className }: TripCardProps)
       <div className="p-4 bg-neutral-50 flex gap-3">
         <button 
           onClick={() => onReject?.(trip.id)}
-          className="flex-1 py-3.5 rounded-xl font-bold text-neutral-400 bg-neutral-200/50 text-sm active:scale-95 transition-transform"
+          disabled={isLoading}
+          className="flex-1 py-3.5 rounded-xl font-bold text-neutral-400 bg-neutral-200/50 text-sm active:scale-95 transition-transform disabled:opacity-50"
         >
-          Reject
+          {isLoading ? '...' : 'Reject'}
         </button>
         <button 
           onClick={() => onAccept?.(trip.id)}
-          className="flex-[2] py-3.5 rounded-xl font-black text-white bg-primary premium-shadow text-sm active:scale-95 transition-transform flex items-center justify-center gap-2"
+          disabled={isLoading}
+          className="flex-[2] py-3.5 rounded-xl font-black text-white bg-primary premium-shadow text-sm active:scale-95 transition-transform flex items-center justify-center gap-2 disabled:opacity-50"
         >
-          ACCEPT RIDE
-          <ChevronRight size={18} />
+          {isLoading ? 'PROCESSING...' : 'ACCEPT RIDE'}
+          {!isLoading && <ChevronRight size={18} />}
         </button>
       </div>
       

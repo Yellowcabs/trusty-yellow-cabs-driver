@@ -17,6 +17,7 @@ interface TripContextType {
   cancelTrip: (tripId: string) => Promise<{ success: boolean; error?: string }>;
   updateTripFare: (tripId: string, fare: number) => Promise<{ success: boolean; error?: string }>;
   refreshTrips: () => Promise<void>;
+  isActionLoading: string | null;
 }
 
 const TripContext = createContext<TripContextType | undefined>(undefined);
@@ -126,28 +127,36 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   const refreshTrips = useCallback(async () => {
     if (!driver) return;
 
-    let pending, assigned;
-    
-    if (driver.id === 'admin') {
-      [pending, assigned] = await Promise.all([
-        fetchTrips({ status: 'PENDING', limit: 100 }),
-        fetchTrips({ limit: 100 })
-      ]);
-    } else {
-      [pending, assigned] = await Promise.all([
-        fetchTrips({ status: 'PENDING', limit: 20 }),
-        fetchTrips({ driverId: driver.id, limit: 10 })
-      ]);
-    }
+    try {
+      let pending: Trip[] = [], assigned: Trip[] = [];
+      
+      if (driver.id === 'admin') {
+        const results = await Promise.allSettled([
+          fetchTrips({ status: 'PENDING', limit: 100 }),
+          fetchTrips({ limit: 100 })
+        ]);
+        pending = results[0].status === 'fulfilled' ? results[0].value : [];
+        assigned = results[1].status === 'fulfilled' ? results[1].value : [];
+      } else {
+        const results = await Promise.allSettled([
+          fetchTrips({ status: 'PENDING', limit: 20 }),
+          fetchTrips({ driverId: driver.id, limit: 10 })
+        ]);
+        pending = results[0].status === 'fulfilled' ? results[0].value : [];
+        assigned = results[1].status === 'fulfilled' ? results[1].value : [];
+      }
 
-    const combinedTrips = [...pending, ...assigned];
-    const uniqueTrips = Array.from(new Map(combinedTrips.map(t => [t.id, t])).values());
-    
-    setAllTrips(uniqueTrips);
-    updatePendingTrips(uniqueTrips);
-    
-    const active = uniqueTrips.find(t => t.driverId === driver.id && !['COMPLETED', 'CANCELLED'].includes(t.status));
-    setActiveTrip(active || null);
+      const combinedTrips = [...pending, ...assigned];
+      const uniqueTrips = Array.from(new Map(combinedTrips.map(t => [t.id, t])).values());
+      
+      setAllTrips(uniqueTrips);
+      updatePendingTrips(uniqueTrips);
+      
+      const active = uniqueTrips.find(t => t.driverId === driver.id && !['COMPLETED', 'CANCELLED'].includes(t.status));
+      setActiveTrip(active || null);
+    } catch (e) {
+      console.warn('[TripContext] Refresh failed silently:', e);
+    }
   }, [driver, updatePendingTrips]);
 
   useEffect(() => {
@@ -319,33 +328,56 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(timerInterval);
   }, [updatePendingTrips]);
 
+  const [isActionLoading, setIsActionLoading] = useState<string | null>(null);
+
   const acceptTrip = async (tripId: string) => {
-    if (!driver || driver.isBlocked) return;
-    const result = await updateTripStatus(tripId, 'ACCEPTED', driver.id);
-    if (result.success) {
-      await refreshTrips();
+    if (!driver || driver.isBlocked || isActionLoading) return;
+    setIsActionLoading(tripId);
+    try {
+      console.log(`[TripAction] Accepting trip: ${tripId}`);
+      const result = await updateTripStatus(tripId, 'ACCEPTED', driver.id);
+      if (result.success) {
+        await refreshTrips();
+      } else {
+        alert('Could not accept trip: ' + (result.error || 'Unknown error'));
+      }
+    } finally {
+      setIsActionLoading(null);
     }
   };
   
   const releaseTrip = async (tripId: string, reason: string) => {
-    if (!driver || driver.isBlocked) return;
-    const { releaseTripApi } = await import('../services/api');
-    const trip = allTrips.find(t => t.id === tripId);
-    const result = await releaseTripApi(tripId, driver.id, trip?.releasedBy || [], reason);
-    if (result.success) {
-      setActiveTrip(null);
-      await refreshTrips();
+    if (!driver || driver.isBlocked || isActionLoading) return;
+    setIsActionLoading(tripId);
+    try {
+      const { releaseTripApi } = await import('../services/api');
+      const trip = allTrips.find(t => t.id === tripId);
+      const result = await releaseTripApi(tripId, driver.id, trip?.releasedBy || [], reason);
+      if (result.success) {
+        setActiveTrip(null);
+        await refreshTrips();
+      }
+    } finally {
+      setIsActionLoading(null);
     }
   };
   
   const rejectTrip = async (tripId: string) => {
-    if (!driver || driver.isBlocked) return;
-    const trip = allTrips.find(t => t.id === tripId);
-    if (!trip) return;
-    
-    const result = await rejectTripApi(tripId, driver.id, trip.rejectedBy || []);
-    if (result.success) {
-      await refreshTrips();
+    if (!driver || driver.isBlocked || isActionLoading) return;
+    setIsActionLoading(tripId);
+    try {
+      const trip = allTrips.find(t => t.id === tripId);
+      if (!trip) return;
+      
+      console.log(`[TripAction] Rejecting trip: ${tripId}`);
+      const result = await rejectTripApi(tripId, driver.id, trip.rejectedBy || []);
+      if (result.success) {
+        // Remove locally immediately for better UX
+        setPendingTrips(prev => prev.filter(t => t.id !== tripId));
+        await refreshTrips();
+      }
+    } finally {
+      setIsActionLoading(null);
     }
   };
 
@@ -384,7 +416,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <TripContext.Provider value={{ pendingTrips, activeTrip, allTrips, acceptTrip, rejectTrip, releaseTrip, updateStatus, createTrip, cancelTrip, updateTripFare, refreshTrips }}>
+    <TripContext.Provider value={{ pendingTrips, activeTrip, allTrips, acceptTrip, rejectTrip, releaseTrip, updateStatus, createTrip, cancelTrip, updateTripFare, refreshTrips, isActionLoading }}>
       {children}
     </TripContext.Provider>
   );
