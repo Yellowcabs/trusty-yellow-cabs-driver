@@ -39,12 +39,18 @@ import { Trip, Driver } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { getBaseUrl } from '../lib/config';
 
-const isCapacitor = typeof window !== 'undefined' && ((window as any).Capacitor || (window as any).webkit?.messageHandlers?.bridge || navigator.userAgent.includes('Capacitor'));
+function getCapacitorStatus() {
+  if (typeof window === 'undefined') return false;
+  const win = window as any;
+  return !!(win.Capacitor || win.webkit?.messageHandlers?.bridge || navigator.userAgent.includes('Capacitor'));
+}
+
+const isCapacitor = getCapacitorStatus();
 
 async function safeFetch(url: string, options: any = {}): Promise<Response> {
-  const isCapacitor = typeof window !== 'undefined' && ((window as any).Capacitor || (window as any).webkit?.messageHandlers?.bridge || navigator.userAgent.includes('Capacitor'));
+  const currentIsCapacitor = getCapacitorStatus();
   
-  if (isCapacitor) {
+  if (currentIsCapacitor) {
     try {
       const { CapacitorHttp } = await import('@capacitor/core');
       const method = (options.method || 'GET').toUpperCase();

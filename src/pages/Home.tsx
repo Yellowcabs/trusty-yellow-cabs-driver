@@ -25,13 +25,19 @@ export function HomePage() {
     }
   }, [driver?.isBlocked]);
 
-  // Calculate earnings and rides today
+  // Calculate earnings and rides today safely
   const today = new Date().setHours(0, 0, 0, 0);
-  const myCompletedTripsToday = allTrips.filter(t => 
-    t.driverId === driver?.id && 
-    t.status === 'COMPLETED' && 
-    new Date(t.timestamp || '').setHours(0, 0, 0, 0) === today
-  );
+  const myCompletedTripsToday = (allTrips || []).filter(t => {
+    if (!t || !t.timestamp) return false;
+    try {
+      const tripDate = new Date(t.timestamp).setHours(0, 0, 0, 0);
+      return t.driverId === driver?.id && 
+             t.status === 'COMPLETED' && 
+             tripDate === today;
+    } catch (e) {
+      return false;
+    }
+  });
 
   const ridesTodayCount = myCompletedTripsToday.length;
 

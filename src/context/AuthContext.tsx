@@ -39,27 +39,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [lastToggleTime, setLastToggleTime] = useState(0);
 
   useEffect(() => {
     if (driver?.id && driver.id !== 'admin' && !driver.isBlocked && !isUpdatingStatus) {
       const interval = setInterval(() => {
-        refreshDriverStatus();
+        // Only refresh if we haven't toggled recently (within 15 seconds)
+        if (Date.now() - lastToggleTime > 15000) {
+          refreshDriverStatus();
+        }
       }, 30000); // Check every 30 seconds
 
       return () => {
         clearInterval(interval);
       };
     }
-  }, [driver?.id, driver?.isOnline, driver?.isBlocked, isUpdatingStatus]);
+  }, [driver?.id, driver?.isOnline, driver?.isBlocked, isUpdatingStatus, lastToggleTime]);
 
   useEffect(() => {
     const handleForeground = () => {
       console.log('[Auth] Detected foreground, refreshing status...');
-      refreshDriverStatus();
+      // Only refresh if we haven't toggled recently
+      if (Date.now() - lastToggleTime > 15000) {
+        refreshDriverStatus();
+      }
     };
     window.addEventListener('app-foreground', handleForeground);
     return () => window.removeEventListener('app-foreground', handleForeground);
-  }, [driver?.id]);
+  }, [driver?.id, lastToggleTime]);
 
   const refreshDriverStatus = async (forcedId?: string) => {
     const driverId = forcedId || driver?.id;
@@ -71,6 +78,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const current = allDrivers.find(d => d.id === driverId);
       
       if (current) {
+        // SECURITY: If we're currently online locally, and the server says offline,
+        // we trust the local state if it's very recent (the backend is likely lagging)
+        if (driver?.isOnline && !current.isOnline && (Date.now() - lastToggleTime < 15000)) {
+           console.log('[Auth] Ignoring server offline status due to recent manual toggle');
+           return;
+        }
+
         setDriver(current);
         localStorage.setItem('trusty_driver', JSON.stringify(current));
       }
@@ -106,13 +120,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { getDriverByLogin } = await import('../services/api');
     // Try fetching from Supabase for all other users
-    const dbDriver = await getDriverByLogin(id, pin);
-    if (dbDriver) {
-      if (dbDriver.isBlocked) return false;
-      
-      setDriver(dbDriver);
-      localStorage.setItem('trusty_driver', JSON.stringify(dbDriver));
-      return true;
+    try {
+      const dbDriver = await getDriverByLogin(id, pin);
+      if (dbDriver) {
+        if (dbDriver.isBlocked) return false;
+        
+        setDriver(dbDriver);
+        localStorage.setItem('trusty_driver', JSON.stringify(dbDriver));
+        return true;
+      }
+    } catch (e) {
+      console.error('[Auth] Login error:', e);
     }
 
     return false;
@@ -129,6 +147,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log(`[Auth] Toggling Online Status: ${status}`);
     
     setIsUpdatingStatus(true);
+    setLastToggleTime(Date.now());
     const { updateDriverOnlineStatus } = await import('../services/api');
     
     try {
@@ -143,9 +162,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // On failure, we sync back from server
         await refreshDriverStatus();
       }
+    } catch (err) {
+      console.error('[Auth] Toggle Exception:', err);
     } finally {
       // Delay unsetting updating flag to let server settle
-      setTimeout(() => setIsUpdatingStatus(false), 2000);
+      setTimeout(() => setIsUpdatingStatus(false), 5000);
     }
   };
 

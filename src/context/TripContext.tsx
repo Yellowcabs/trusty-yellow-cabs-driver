@@ -339,8 +339,11 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       if (result.success) {
         await refreshTrips();
       } else {
-        alert('Could not accept trip: ' + (result.error || 'Unknown error'));
+        console.error('[TripAction] Accept Failed:', result.error);
+        await refreshTrips(); // Refresh to sync state
       }
+    } catch (e) {
+      console.error('[TripAction] Accept Exception:', e);
     } finally {
       setIsActionLoading(null);
     }
@@ -357,6 +360,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         setActiveTrip(null);
         await refreshTrips();
       }
+    } catch (e) {
+      console.error('[TripAction] Release Exception:', e);
     } finally {
       setIsActionLoading(null);
     }
@@ -376,6 +381,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         setPendingTrips(prev => prev.filter(t => t.id !== tripId));
         await refreshTrips();
       }
+    } catch (e) {
+      console.error('[TripAction] Reject Exception:', e);
     } finally {
       setIsActionLoading(null);
     }

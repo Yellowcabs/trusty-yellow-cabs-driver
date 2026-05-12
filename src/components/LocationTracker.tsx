@@ -17,23 +17,27 @@ export function LocationTracker() {
     let watchId: any = null;
     let wakeLock: any = null;
     let silentAudio: HTMLAudioElement | null = null;
-    const isCapacitor = typeof window !== 'undefined' && ((window as any).Capacitor || (window as any).webkit?.messageHandlers?.bridge);
+    const isCapacitor = typeof window !== 'undefined' && ((window as any).Capacitor || (window as any).webkit?.messageHandlers?.bridge || navigator.userAgent.includes('Capacitor'));
 
     // Silent audio hack to keep process alive in background
     const startSilentAudio = () => {
       if (silentAudio) return;
-      silentAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAP7/AAD+Pw==');
-      silentAudio.loop = true;
-      silentAudio.volume = 0.01;
-      
-      if ('mediaSession' in navigator) {
-        (navigator as any).mediaSession.metadata = new (window as any).MediaMetadata({
-          title: 'Trusty Cab - Service Active',
-          artist: driver.name,
-          artwork: [{ src: 'https://cdn-icons-png.flaticon.com/512/3063/3063822.png', sizes: '512x512', type: 'image/png' }]
-        });
+      try {
+        silentAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAP7/AAD+Pw==');
+        silentAudio.loop = true;
+        silentAudio.volume = 0.01;
+        
+        if ('mediaSession' in navigator) {
+          (navigator as any).mediaSession.metadata = new (window as any).MediaMetadata({
+            title: 'Trusty Cab - Service Active',
+            artist: driver.name,
+            artwork: [{ src: 'https://cdn-icons-png.flaticon.com/512/3063/3063822.png', sizes: '512x512', type: 'image/png' }]
+          });
+        }
+        silentAudio.play().catch(e => console.log('Silent audio blocked:', e));
+      } catch (e) {
+        console.warn('Audio setup failed', e);
       }
-      silentAudio.play().catch(e => console.log('Silent audio blocked:', e));
     };
 
     const requestWakeLock = async () => {
@@ -47,14 +51,14 @@ export function LocationTracker() {
     };
 
     const handlePosition = async (pos: any) => {
-      if (!pos) return;
+      if (!pos || !pos.coords) return;
       const { latitude, longitude, heading, accuracy: locAccuracy } = pos.coords;
       const now = Date.now();
       
       setAccuracy(locAccuracy);
 
       if (now - lastUpdateRef.current >= UPDATE_INTERVAL || lastUpdateRef.current === 0) {
-        if (locAccuracy < 100) { // Accept reasonable accuracy
+        if (locAccuracy < 150) { // Accept reasonable accuracy for drivers
           try {
             const { updateLocationApi } = await import('../services/api');
             await updateLocationApi(driver.id, latitude, longitude, heading || undefined);
@@ -74,15 +78,31 @@ export function LocationTracker() {
         try {
           const { Geolocation } = await import('@capacitor/geolocation');
           
-          await Geolocation.requestPermissions();
+          if (!Geolocation) throw new Error('Geolocation plugin not found');
+
+          console.log('[Geo] Requesting perms...');
+          const perms = await Geolocation.checkPermissions().catch(() => ({ location: 'prompt' }));
           
+          if (perms.location !== 'granted') {
+            await Geolocation.requestPermissions().catch(e => console.warn('[Geo] Permission request failed', e));
+          }
+          
+          console.log('[Geo] Starting watch...');
           watchId = await Geolocation.watchPosition(
-            { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 },
+            { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 },
             (pos, err) => {
-              if (err) console.error('Capacitor Geo Error:', err);
-              else handlePosition(pos);
+              if (err) {
+                console.error('Capacitor Geo Error:', err);
+                // If it's a permission error, maybe fallback
+              }
+              else if (pos) {
+                handlePosition(pos);
+              }
             }
-          );
+          ).catch(e => {
+             console.error('[Geo] watchPosition Exception:', e);
+             return null;
+          });
         } catch (e) {
           console.error('Capacitor Geo failed, fallback:', e);
           fallbackToWeb();
