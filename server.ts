@@ -35,12 +35,18 @@ const supabase = (supabaseUrl && supabaseKey && !supabaseUrl.includes('placehold
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-app.use(cors());
+app.use(cors({
+  origin: true,
+  credentials: true,
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With']
+}));
 app.use(express.json());
 
-// Request logger
+// Detailed Request logger
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  const origin = req.get('origin') || 'no-origin';
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - Origin: ${origin}`);
   next();
 });
 
@@ -49,7 +55,8 @@ app.get("/api/health", (req, res) => {
   res.json({ 
     status: "ok", 
     message: "Trusty Yellow Backend is running",
-    databaseConnected: !!supabase
+    databaseConnected: !!supabase,
+    timestamp: new Date().toISOString()
   });
 });
 

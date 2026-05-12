@@ -21,18 +21,36 @@ export function LoginPage() {
 
   const [debugHealth, setDebugHealth] = useState<'IDLE' | 'CHECKING' | 'OK' | 'FAIL'>('IDLE');
   const [debugStatus, setDebugStatus] = useState<number | null>(null);
+  const [debugLog, setDebugLog] = useState<string>('');
 
   const checkHealth = async () => {
     setDebugHealth('CHECKING');
+    setDebugLog('Starting fetch...');
     try {
-      const res = await fetch(`${getBaseUrl()}/api/health`);
+      const url = `${getBaseUrl()}/api/health`;
+      const res = await fetch(url, { 
+        method: 'GET',
+        headers: { 'Accept': 'application/json' }
+      });
       setDebugStatus(res.status);
-      if (res.ok) setDebugHealth('OK');
-      else setDebugHealth('FAIL');
-    } catch (e) {
+      if (res.ok) {
+        setDebugHealth('OK');
+        const data = await res.json();
+        setDebugLog(`Success: ${JSON.stringify(data)}`);
+      } else {
+        setDebugHealth('FAIL');
+        setDebugLog(`Error ${res.status}: ${await res.text()}`);
+      }
+    } catch (e: any) {
       setDebugHealth('FAIL');
+      setDebugLog(`Fetch Error: ${e.message}`);
       console.error(e);
     }
+  };
+
+  const clearCache = () => {
+    localStorage.clear();
+    window.location.reload();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -186,11 +204,15 @@ export function LoginPage() {
                 <span className="text-neutral-900 bg-neutral-100 px-2 py-0.5 rounded-full">Capacitor APK</span>
               </div>
               <div className="flex flex-col gap-1 text-[10px] font-black">
+                <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-tight mb-1">
+                  <span className="text-neutral-400">App Origin:</span>
+                  <span className="text-neutral-900 select-all">{window.location.origin}</span>
+                </div>
                 <span className="text-neutral-400 uppercase tracking-tight">Backend Endpoint:</span>
                 <span className="text-primary break-all bg-primary/5 p-2 rounded-xl border border-primary/10 select-all mb-2">
                   {getBaseUrl() || 'Direct Database Access'}
                 </span>
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center justify-between gap-3 mb-2">
                   <button 
                     type="button"
                     onClick={checkHealth}
@@ -201,11 +223,29 @@ export function LoginPage() {
                   <div className={cn(
                     "px-3 py-2 rounded-lg text-[9px] font-black uppercase flex-1 text-center",
                     debugHealth === 'OK' ? "bg-emerald-500 text-white" : 
-                    debugHealth === 'FAIL' ? "bg-red-500 text-white" : "bg-neutral-100 text-neutral-400"
+                    debugHealth === 'FAIL' ? "bg-red-500 text-white" : 
+                    debugHealth === 'CHECKING' ? "bg-amber-500 text-white animate-pulse" : "bg-neutral-100 text-neutral-400"
                   )}>
                     {debugHealth === 'IDLE' ? 'READY' : debugHealth} {debugStatus && `(${debugStatus})`}
                   </div>
                 </div>
+                {debugHealth === 'FAIL' && (
+                  <div className="text-[8px] text-red-500 font-bold bg-red-50 p-2 rounded-lg border border-red-100 break-all">
+                    {debugLog}
+                  </div>
+                )}
+                {debugHealth === 'OK' && (
+                  <div className="text-[8px] text-emerald-500 font-bold bg-emerald-50 p-2 rounded-lg border border-emerald-100 break-all">
+                    {debugLog}
+                  </div>
+                )}
+                <button 
+                  type="button"
+                  onClick={clearCache}
+                  className="w-full mt-2 border-2 border-dashed border-neutral-100 text-neutral-400 py-2 rounded-lg text-[9px] uppercase tracking-widest font-black active:scale-95 transition-all text-center"
+                >
+                  Reset App & Clear Cache
+                </button>
               </div>
             </div>
           </div>
