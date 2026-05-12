@@ -5,6 +5,7 @@
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#FFC107",
+  "gcm_sender_id": "1001336213776",
   "icons": [
     {
       "src": "https://cdn-icons-png.flaticon.com/512/3063/3063822.png",

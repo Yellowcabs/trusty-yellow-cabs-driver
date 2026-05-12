@@ -9,7 +9,7 @@ class FCMService {
 
   constructor() {
     if (typeof window !== 'undefined') {
-      this.audio = new Audio('/trip.mp3.mp3');
+      this.audio = new Audio('/trip.mp3');
       this.audio.loop = true;
     }
   }
@@ -31,23 +31,45 @@ class FCMService {
   }
 
   async requestPermission(driverId: string) {
-    if (!messaging) return;
+    if (!messaging || typeof window === 'undefined') return;
 
     try {
+      // Register the service worker explicitly
+      const registration = await navigator.serviceWorker.register('/sw.js', {
+        scope: '/'
+      });
+      console.log('Firebase SW registered:', registration);
+
       const permission = await Notification.requestPermission();
       if (permission === 'granted') {
-        const token = await getToken(messaging, {
-          vapidKey: 'BC1DB0jGKXwqAZ5GrAs6-oaAj9_DbNeZU9FtYcpz5iB1z89-jrg8SDgUOe6h47Ow1x5n2HHTZGK1x49EZWGb87I' // This will be updated if needed, but often FCM works without it in some regions if default is used
-          // Actually, I should probably use a real VAPID key if I had one, 
-          // but let's try getting it without first or use a placeholder.
-          // VAPID keys are generated in Firebase Console. 
-          // Since I can't access the console, I'll use a standard method.
-        });
-        
-        if (token) {
-          console.log('FCM Token:', token);
-          await updateFcmTokenApi(driverId, token);
-          return token;
+        try {
+          const token = await getToken(messaging, {
+            serviceWorkerRegistration: registration,
+            vapidKey: 'BC1DB0jGKXwqAZ5GrAs6-oaAj9_DbNeZU9FtYcpz5iB1z89-jrg8SDgUOe6h47Ow1x5n2HHTZGK1x49EZWGb87I' // REQUIRED for Web Push
+          });
+          
+          if (token) {
+            console.log('FCM Token generated:', token);
+            await updateFcmTokenApi(driverId, token);
+            return token;
+          }
+        } catch (tokenError: any) {
+          console.error('FCM Token error:', tokenError.message);
+          if (tokenError.message.includes('vapidKey') || tokenError.message.includes('certificates')) {
+            console.info('%c [FCM SETUP REQUIRED] %c Please generate a Web Push VAPID key in Firebase Console and update fcmService.ts', 
+              'background: #FF5722; color: #fff; padding: 2px 5px;', '');
+          }
+          
+          // Try one more time without VAPID key as fallback (legacy projects)
+          try {
+            const token = await getToken(messaging, { serviceWorkerRegistration: registration });
+            if (token) {
+              await updateFcmTokenApi(driverId, token);
+              return token;
+            }
+          } catch (e) {
+            // Silent fail on second attempt
+          }
         }
       }
     } catch (error) {
@@ -57,7 +79,7 @@ class FCMService {
   }
 
   setupForegroundListener() {
-    if (!messaging) return;
+    if (!messaging || typeof window === 'undefined') return;
 
     onMessage(messaging, (payload) => {
       console.log('Message received in foreground:', payload);
@@ -67,9 +89,17 @@ class FCMService {
         this.startTripSound();
       }
       
-      // If trip is accepted or rejected elsewhere (unlikely but possible), stop sound
+      // If trip is accepted or rejected elsewhere, stop sound
       if (payload.data?.type === 'STOP_SOUND') {
         this.stopTripSound();
+      }
+    });
+
+    // Handle visibility changes (e.g. app opening from background)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        console.log('App became visible, checking for pending actions...');
+        // NotificationManager handles the sound playback if pendingTrips exist
       }
     });
   }

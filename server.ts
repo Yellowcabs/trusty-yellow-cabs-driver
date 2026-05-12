@@ -112,44 +112,55 @@ app.post("/api/trips", async (req, res) => {
     const newTrip = data[0];
 
     // Background push notification to online drivers
-    supabase.from('drivers')
-      .select('fcm_token')
-      .eq('is_online', true)
-      .not('fcm_token', 'is', null)
-      .then(({ data: onlineDrivers }) => {
+    (async () => {
+      try {
+        const { data: onlineDrivers } = await supabase.from('drivers')
+          .select('fcm_token')
+          .eq('is_online', true)
+          .not('fcm_token', 'is', null);
+
         if (onlineDrivers && onlineDrivers.length > 0) {
           const tokens = onlineDrivers.map(d => d.fcm_token).filter(t => !!t) as string[];
           if (tokens.length > 0) {
-            admin.messaging().sendEachForMulticast({
+            await admin.messaging().sendEachForMulticast({
               notification: {
                 title: "New Trip Request! 🚕",
                 body: `Pickup: ${newTrip.pickup} to ${newTrip.drop}`,
               },
               data: {
                 type: "NEW_TRIP",
-                tripId: newTrip.id,
+                tripId: newTrip.id.toString(),
                 url: "/requests"
               },
               tokens: tokens,
               android: {
                 priority: 'high',
                 notification: {
-                  sound: 'default',
-                  channelId: 'trip-requests'
+                  sound: 'trip.mp3',
+                  channelId: 'trip-requests',
+                  priority: 'high',
+                  visibility: 'public'
                 }
               },
-              apns: {
-                payload: {
-                  aps: {
-                    sound: 'default',
-                    badge: 1
-                  }
+              webpush: {
+                headers: {
+                  Urgency: 'high'
+                },
+                notification: {
+                  title: "New Trip Request! 🚕",
+                  body: `Pickup: ${newTrip.pickup} to ${newTrip.drop}`,
+                  icon: 'https://cdn-icons-png.flaticon.com/512/3063/3063822.png',
+                  vibrate: [500, 100, 500, 100, 500, 100, 500],
+                  requireInteraction: true // Keeps notification visible until user acts
                 }
               }
-            }).catch(e => console.error("FCM Error:", e));
+            });
           }
         }
-      }).catch(e => console.error("Supabase Drivers Fetch Error:", e));
+      } catch (e: any) {
+        console.error("Push Notification error:", e.message || e);
+      }
+    })();
 
     res.json(newTrip);
   } catch (error: any) {
