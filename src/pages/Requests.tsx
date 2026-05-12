@@ -20,8 +20,15 @@ export function RequestsPage() {
     );
   }
 
-  const requestPermission = () => {
-    if (typeof Notification !== 'undefined') {
+  const requestPermission = async () => {
+    const isCapacitor = (window as any).Capacitor;
+    
+    if (isCapacitor) {
+      if (driver && driver.id !== 'admin') {
+        await fcmService.requestPermission(driver.id);
+        setPermission('granted'); // Assume handled or check status
+      }
+    } else if (typeof Notification !== 'undefined') {
       Notification.requestPermission().then((res) => {
         setPermission(res);
         if (res === 'granted' && driver && driver.id !== 'admin') {

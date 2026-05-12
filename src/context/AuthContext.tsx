@@ -38,8 +38,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(false);
   }, []);
 
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
   useEffect(() => {
-    if (driver?.id && driver.id !== 'admin' && !driver.isBlocked) {
+    if (driver?.id && driver.id !== 'admin' && !driver.isBlocked && !isUpdatingStatus) {
       const interval = setInterval(() => {
         refreshDriverStatus();
       }, 30000); // Check every 30 seconds
@@ -48,19 +50,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clearInterval(interval);
       };
     }
-  }, [driver?.id, driver?.isOnline, driver?.isBlocked]);
+  }, [driver?.id, driver?.isOnline, driver?.isBlocked, isUpdatingStatus]);
+
+  useEffect(() => {
+    const handleForeground = () => {
+      console.log('[Auth] Detected foreground, refreshing status...');
+      refreshDriverStatus();
+    };
+    window.addEventListener('app-foreground', handleForeground);
+    return () => window.removeEventListener('app-foreground', handleForeground);
+  }, [driver?.id]);
 
   const refreshDriverStatus = async (forcedId?: string) => {
     const driverId = forcedId || driver?.id;
-    if (!driverId || driverId === 'admin') return;
+    if (!driverId || driverId === 'admin' || isUpdatingStatus) return;
     
-    const { fetchDrivers } = await import('../services/api');
-    const allDrivers = await fetchDrivers();
-    const current = allDrivers.find(d => d.id === driverId);
-    
-    if (current) {
-      setDriver(current);
-      localStorage.setItem('trusty_driver', JSON.stringify(current));
+    try {
+      const { fetchDrivers } = await import('../services/api');
+      const allDrivers = await fetchDrivers();
+      const current = allDrivers.find(d => d.id === driverId);
+      
+      if (current) {
+        setDriver(current);
+        localStorage.setItem('trusty_driver', JSON.stringify(current));
+      }
+    } catch (e) {
+      console.warn('[Auth] Status refresh failed', e);
     }
   };
 
@@ -112,16 +127,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const toggleOnline = async (status: boolean) => {
     if (!driver || driver.isBlocked) return;
     console.log(`[Auth] Toggling Online Status: ${status}`);
+    
+    setIsUpdatingStatus(true);
     const { updateDriverOnlineStatus } = await import('../services/api');
-    const success = await updateDriverOnlineStatus(driver.id, status);
-    if (success) {
-      console.log('[Auth] Toggle Success');
-      const updatedDriver = { ...driver, isOnline: status };
-      setDriver(updatedDriver);
-      localStorage.setItem('trusty_driver', JSON.stringify(updatedDriver));
-    } else {
-      console.error('[Auth] Toggle Failed');
-      await refreshDriverStatus();
+    
+    try {
+      const success = await updateDriverOnlineStatus(driver.id, status);
+      if (success) {
+        console.log('[Auth] Toggle Success');
+        const updatedDriver = { ...driver, isOnline: status };
+        setDriver(updatedDriver);
+        localStorage.setItem('trusty_driver', JSON.stringify(updatedDriver));
+      } else {
+        console.error('[Auth] Toggle Failed');
+        // On failure, we sync back from server
+        await refreshDriverStatus();
+      }
+    } finally {
+      // Delay unsetting updating flag to let server settle
+      setTimeout(() => setIsUpdatingStatus(false), 2000);
     }
   };
 

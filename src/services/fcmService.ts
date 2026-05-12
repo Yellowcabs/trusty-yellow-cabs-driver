@@ -31,7 +31,42 @@ class FCMService {
   }
 
   async requestPermission(driverId: string) {
-    if (!messaging || typeof window === 'undefined') return;
+    if (typeof window === 'undefined') return;
+
+    const isCapacitor = (window as any).Capacitor;
+
+    if (isCapacitor) {
+      try {
+        const { PushNotifications } = await import('@capacitor/push-notifications');
+        const { LocalNotifications } = await import('@capacitor/local-notifications');
+        
+        let permStatus = await PushNotifications.checkPermissions();
+        if (permStatus.receive === 'prompt') {
+          permStatus = await PushNotifications.requestPermissions();
+        }
+
+        if (permStatus.receive === 'granted') {
+          await PushNotifications.register();
+          
+          await LocalNotifications.requestPermissions();
+
+          // On Capacitor, the token is received via listeners
+          PushNotifications.addListener('registration', async (token) => {
+            console.log('Capacitor Push Token:', token.value);
+            await updateFcmTokenApi(driverId, token.value);
+          });
+
+          PushNotifications.addListener('registrationError', (error) => {
+            console.error('Capacitor Push Registration Error:', error);
+          });
+        }
+      } catch (e) {
+        console.error('Capacitor Push setup failed:', e);
+      }
+      return null;
+    }
+
+    if (!messaging) return;
 
     try {
       // Check for Service Worker support

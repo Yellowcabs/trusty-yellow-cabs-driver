@@ -71,9 +71,11 @@ async function safeFetch(url: string, options: any = {}): Promise<Response> {
         }
       }
 
-      console.log(`[SafeFetch] ${method} ${url}`);
+      console.log(`[SafeFetch] ${method} ${url}`, config.data ? '(with body)' : '');
       const response = await (CapacitorHttp as any)[method.toLowerCase()](config);
       
+      console.log(`[SafeFetch] ${method} Response:`, response.status);
+
       return {
         ok: response.status >= 200 && response.status < 300,
         status: response.status,
@@ -83,11 +85,8 @@ async function safeFetch(url: string, options: any = {}): Promise<Response> {
       } as Response;
     } catch (e: any) {
       console.error('[SafeFetch] CapacitorHttp Error:', e);
-      // Fallback to fetch only if CapacitorHttp actually failed to even start
-      if (e.message?.includes('found') || e.message?.includes('import')) {
-         return fetch(url, options);
-      }
-      throw e; // Re-throw if it was a network error or something else CapacitorHttp specific
+      // Fallback to fetch only if CapacitorHttp actually failed or is missing
+      return fetch(url, options);
     }
   }
   return fetch(url, options);
@@ -389,14 +388,24 @@ export async function updateTripStatus(tripId: string, status: Trip['status'], d
     if (status === 'STARTED') updateData.start_time = new Date().toISOString();
     if (status === 'COMPLETED') updateData.end_time = new Date().toISOString();
 
+    console.log(`[API] Updating Trip ${tripId} status to ${status}`);
+
     // Try backend first
     const response = await safeFetch(`${getBaseUrl()}/api/trips/${tripId}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
       body: JSON.stringify(updateData)
     });
 
-    if (response.ok) return { success: true };
+    if (response.ok) {
+      console.log(`[API] Trip ${tripId} status update success (via Backend)`);
+      return { success: true };
+    }
+
+    console.warn(`[API] Trip update failed via backend (${response.status}), falling back to Supabase`);
 
     if (!isSupabaseConfigured) throw new Error('Supabase not configured');
     const { error } = await supabase
@@ -442,7 +451,6 @@ export async function releaseTripApi(tripId: string, driverId: string, currentRe
 
 export async function rejectTripApi(tripId: string, driverId: string, currentRejectedBy: string[]): Promise<{ success: boolean; error?: string }> {
   try {
-    if (!isSupabaseConfigured) throw new Error('Supabase not configured');
     const timestamp = Date.now().toString();
     const rejectionEntry = `${driverId}|${timestamp}`;
     
@@ -454,6 +462,26 @@ export async function rejectTripApi(tripId: string, driverId: string, currentRej
     
     const newRejectedBy = [...filteredRejections, rejectionEntry];
 
+    console.log(`[API] Rejecting Trip ${tripId} by Driver ${driverId}`);
+
+    // Try backend first
+    const response = await safeFetch(`${getBaseUrl()}/api/trips/${tripId}/reject`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ driverId, rejectedBy: newRejectedBy })
+    });
+
+    if (response.ok) {
+      console.log(`[API] Trip ${tripId} rejection success (via Backend)`);
+      return { success: true };
+    }
+
+    console.warn(`[API] Trip rejection failed via backend (${response.status}), falling back to Supabase`);
+
+    if (!isSupabaseConfigured) throw new Error('Supabase not configured');
     const { error } = await supabase
       .from('trips')
       .update({ rejected_by: newRejectedBy })

@@ -129,6 +129,19 @@ export default function App() {
     console.log('[DEBUG] Backend URL:', getBaseUrl());
     console.log('[DEBUG] Capacitor Detect:', !!isCapacitor);
 
+    // Capacitor App State Listeners
+    if (isCapacitor) {
+      import('@capacitor/app').then(({ App: CapApp }) => {
+        CapApp.addListener('appStateChange', ({ isActive }) => {
+          console.log('[DEBUG] App State Change:', isActive ? 'FOREGROUND' : 'BACKGROUND');
+          if (isActive) {
+            // App came to foreground, trigger any necessary refreshes
+            window.dispatchEvent(new CustomEvent('app-foreground'));
+          }
+        });
+      });
+    }
+
     // Connection Health Check
     const checkConnection = async () => {
       try {

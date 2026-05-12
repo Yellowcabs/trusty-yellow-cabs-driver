@@ -254,6 +254,22 @@ app.patch("/api/drivers/:id/location", async (req, res) => {
   }
 });
 
+app.post("/api/trips/:id/reject", async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: "Database not configured" });
+  const { driverId, rejectedBy } = req.body;
+  try {
+    const { data, error } = await supabase
+      .from('trips')
+      .update({ rejected_by: rejectedBy })
+      .eq('id', req.params.id)
+      .select();
+    if (error) throw error;
+    res.json(data[0] || { success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.patch("/api/trips/:id", async (req, res) => {
   if (!supabase) return res.status(503).json({ error: "Database not configured" });
   try {
