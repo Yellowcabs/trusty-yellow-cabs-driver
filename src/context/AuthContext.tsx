@@ -37,9 +37,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }, 30000); // Check every 30 seconds
 
       // Background-friendly Location Watcher
-      let watchId: number | null = null;
+      let watchId: any = null;
       let wakeLock: any = null;
       let silentAudio: HTMLAudioElement | null = null;
+      const isCapacitor = typeof window !== 'undefined' && ((window as any).Capacitor || (window as any).webkit?.messageHandlers?.bridge);
 
       // Silent audio hack to keep process alive in background/locked states
       const startSilentAudio = () => {
@@ -69,7 +70,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
 
       const requestWakeLock = async () => {
-        if (!driver?.isOnline) return; // Only wake lock when online
         try {
           if ('wakeLock' in navigator) {
             wakeLock = await (navigator as any).wakeLock.request('screen');
@@ -80,39 +80,88 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       };
 
-      if ('geolocation' in navigator) {
-        if (driver?.isOnline) {
+      const startTracking = async () => {
+        // Essential for background tracking - keep screen/process alive
+        try {
           requestWakeLock();
           startSilentAudio();
+        } catch (e) {
+          console.warn('Could not start keep-alive mechanisms:', e);
         }
 
-        watchId = navigator.geolocation.watchPosition(
-          async (pos) => {
-            const { latitude, longitude, heading, accuracy } = pos.coords;
-            console.log(`Location: ${latitude}, ${longitude} (acc: ${accuracy}m) status: ${driver?.isOnline ? 'ONLINE' : 'OFFLINE'}`);
+        if (isCapacitor) {
+          try {
+            const { Geolocation } = await import('@capacitor/geolocation');
             
-            try {
-              const { updateLocationApi } = await import('../services/api');
-              await updateLocationApi(driver.id, latitude, longitude, heading || undefined);
-              
-              // Sync local state cautiously to avoid loops if needed, but here it's fine
-              // We only update lat/lng if they changed significantly or periodically
-              setDriver(prev => prev ? { ...prev, latitude, longitude, heading: heading || undefined } : null);
-            } catch (e) {
-              console.error('Failed to update location API:', e);
+            // Check/Request permissions
+            const perm = await Geolocation.checkPermissions();
+            if (perm.location !== 'granted') {
+              await Geolocation.requestPermissions();
             }
-          },
-          (err) => console.error('Tracking Error:', err),
-          {
-            enableHighAccuracy: true,
-            timeout: 15000,
-            maximumAge: 10000
+
+            watchId = await Geolocation.watchPosition(
+              {
+                enableHighAccuracy: true,
+                timeout: 15000,
+                maximumAge: 10000
+              },
+              async (pos, err) => {
+                if (err) {
+                  console.error('Capacitor Geolocation Error:', err);
+                  return;
+                }
+                if (pos) {
+                  const { latitude, longitude, heading, accuracy } = pos.coords;
+                  console.log(`Capacitor Loc: ${latitude}, ${longitude} (acc: ${accuracy}m) status: ${driver?.isOnline ? 'ONLINE' : 'OFFLINE'}`);
+                  
+                  try {
+                    const { updateLocationApi } = await import('../services/api');
+                    await updateLocationApi(driver.id, latitude, longitude, heading || undefined);
+                    setDriver(prev => prev ? { ...prev, latitude, longitude, heading: heading || undefined } : null);
+                  } catch (e) {
+                    console.error('Failed to update location API:', e);
+                  }
+                }
+              }
+            );
+          } catch (e) {
+            console.error('Failed to start Capacitor Geolocation:', e);
+            fallbackToWebGeolocation();
           }
-        );
-      }
+        } else {
+          fallbackToWebGeolocation();
+        }
+      };
+
+      const fallbackToWebGeolocation = () => {
+        if ('geolocation' in navigator) {
+          watchId = navigator.geolocation.watchPosition(
+            async (pos) => {
+              const { latitude, longitude, heading, accuracy } = pos.coords;
+              console.log(`Web Loc: ${latitude}, ${longitude} (acc: ${accuracy}m) status: ${driver?.isOnline ? 'ONLINE' : 'OFFLINE'}`);
+              
+              try {
+                const { updateLocationApi } = await import('../services/api');
+                await updateLocationApi(driver.id, latitude, longitude, heading || undefined);
+                setDriver(prev => prev ? { ...prev, latitude, longitude, heading: heading || undefined } : null);
+              } catch (e) {
+                console.error('Failed to update location API:', e);
+              }
+            },
+            (err) => console.error('Web Tracking Error:', err),
+            {
+              enableHighAccuracy: true,
+              timeout: 15000,
+              maximumAge: 10000
+            }
+          );
+        }
+      };
+
+      startTracking();
 
       const handleVisibilityChange = () => {
-        if (driver?.isOnline && document.visibilityState === 'visible') {
+        if (document.visibilityState === 'visible') {
           requestWakeLock();
         }
       };
@@ -120,7 +169,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       return () => {
         clearInterval(interval);
-        if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+        if (watchId !== null) {
+          if (isCapacitor) {
+            import('@capacitor/geolocation').then(({ Geolocation }) => {
+              Geolocation.clearWatch({ id: watchId });
+            });
+          } else {
+            navigator.geolocation.clearWatch(watchId);
+          }
+        }
         if (wakeLock !== null) {
           wakeLock.release().then(() => { wakeLock = null; });
         }
