@@ -448,7 +448,7 @@ export async function rejectTripApi(tripId: string, driverId: string, currentRej
     
     // Remove any existing rejection entry for this driver (handle both old plain ID and new ID|timestamp)
     const filteredRejections = (currentRejectedBy || []).filter(entry => {
-      const entryId = entry.includes('|') ? entry.split('|')[0] : entry;
+      const entryId = entry && entry.includes('|') ? entry.split('|')[0] : entry;
       return entryId !== driverId;
     });
     
@@ -780,7 +780,7 @@ export async function updateLocationApi(driverId: string, lat: number, lng: numb
 export async function uploadDriverPhoto(file: File, driverId: string): Promise<string | null> {
   try {
     if (!isSupabaseConfigured) return null;
-    const fileExt = file.name.split('.').pop();
+    const fileExt = file?.name?.split('.').pop() || 'jpg';
     const fileName = `${driverId}-${Math.random()}.${fileExt}`;
     const filePath = `${fileName}`; // Just put in root of bucket or a subfolder
 

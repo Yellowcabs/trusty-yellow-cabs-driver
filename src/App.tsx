@@ -132,10 +132,12 @@ export default function App() {
     // Connection Health Check
     const checkConnection = async () => {
       try {
-        const res = await fetch(`${getBaseUrl()}/api/health`, { method: 'GET' });
-        console.log('[DEBUG] Backend Health Check:', res.ok ? 'OK' : 'FAIL', res.status);
+        const { fetchTrips } = await import('./services/api');
+        // We use a real API function to benefit from safeFetch
+        await fetchTrips({ limit: 1 });
+        console.log('[DEBUG] Connection Test: OK');
       } catch (e) {
-        console.error('[DEBUG] Backend Health Check ERROR:', e);
+        console.error('[DEBUG] Connection Test ERROR:', e);
       }
     };
     checkConnection();

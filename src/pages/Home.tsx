@@ -67,7 +67,7 @@ export function HomePage() {
         <div className="flex justify-between items-center relative z-10">
           <div>
             <p className="text-white/70 text-sm font-bold uppercase tracking-widest">Hi,</p>
-            <h1 className="text-white text-3xl font-black mt-1">{driver?.name.split(' ')[0]}</h1>
+            <h1 className="text-white text-3xl font-black mt-1">{driver?.name?.split(' ')[0] || 'Driver'}</h1>
           </div>
           <div className="flex items-center gap-3">
              <button 
