@@ -177,6 +177,23 @@ app.post("/api/trips", async (req, res) => {
   }
 });
 
+// Alias POST to PATCH for compatibility
+app.post("/api/drivers/:id/online", async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: "Database not configured" });
+  const { isOnline } = req.body;
+  try {
+    const { data, error } = await supabase
+      .from('drivers')
+      .update({ is_online: isOnline })
+      .eq('id', req.params.id)
+      .select();
+    if (error) throw error;
+    res.json(data[0]);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.patch("/api/drivers/:id/online", async (req, res) => {
   if (!supabase) return res.status(503).json({ error: "Database not configured" });
   const { isOnline } = req.body;

@@ -10,10 +10,14 @@ export const getBaseUrl = () => {
     const isNativeHost = window.location.hostname === 'localhost' || window.location.hostname === '' || window.location.protocol === 'file:' || window.location.protocol === 'capacitor:';
     
     if (isCapacitor || isNativeHost) {
-      // In physical APK, we MUST use a full URL. 
-      // This is the current dev URL. We fallback to it if we detect we're not on a standard remote web host.
-      const fallbackUrl = 'https://ais-dev-uqgore4bofclvpax7gqjqi-242082848033.asia-southeast1.run.app';
-      console.log('[Config] Native/Capacitor environment detected, using backend:', fallbackUrl);
+      // In Native/Capacitor, we need a full URL to the backend.
+      // We prioritize the AIS URL as it has the Express server running.
+      const aisUrl = 'https://ais-dev-uqgore4bofclvpax7gqjqi-242082848033.asia-southeast1.run.app';
+      const vercelUrl = 'https://trusty-yellow-cabs-driver.vercel.app';
+      
+      // Use AIS as primary for APK to ensure Express routes are present
+      const fallbackUrl = aisUrl;
+      console.log('[Config] Native environment detected. Using Backend:', fallbackUrl);
       return fallbackUrl;
     }
   }

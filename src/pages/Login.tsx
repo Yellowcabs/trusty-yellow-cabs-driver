@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Car, Lock, Key, AlertCircle, ChevronRight, Headphones, ShieldCheck } from 'lucide-react';
+import { Car, Lock, Key, AlertCircle, ChevronRight, Headphones, ShieldCheck, Info } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { cn } from '../lib/utils';
 import { fcmService } from '../services/fcmService';
+import { getBaseUrl } from '../lib/config';
 
 export function LoginPage() {
   const [id, setId] = useState('');
@@ -16,6 +17,23 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isAdminRequest = searchParams.get('admin') === 'true';
+  const isNative = typeof window !== 'undefined' && ((window as any).Capacitor || (window as any).webkit?.messageHandlers?.bridge);
+
+  const [debugHealth, setDebugHealth] = useState<'IDLE' | 'CHECKING' | 'OK' | 'FAIL'>('IDLE');
+  const [debugStatus, setDebugStatus] = useState<number | null>(null);
+
+  const checkHealth = async () => {
+    setDebugHealth('CHECKING');
+    try {
+      const res = await fetch(`${getBaseUrl()}/api/health`);
+      setDebugStatus(res.status);
+      if (res.ok) setDebugHealth('OK');
+      else setDebugHealth('FAIL');
+    } catch (e) {
+      setDebugHealth('FAIL');
+      console.error(e);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -155,6 +173,43 @@ export function LoginPage() {
           Admin manually creates accounts.<br/>
           Contact dispatch for support.
         </p>
+
+        {isNative && (
+          <div className="mt-8 pt-6 border-t border-neutral-100">
+            <div className="flex items-center gap-2 text-[10px] text-neutral-400 uppercase tracking-widest font-black mb-3">
+              <Info size={12} className="text-primary" />
+              <span>Native Debug Info</span>
+            </div>
+            <div className="p-4 bg-white rounded-2xl border-2 border-neutral-100 flex flex-col gap-2 premium-shadow-sm">
+              <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-tight">
+                <span className="text-neutral-400">Environment:</span>
+                <span className="text-neutral-900 bg-neutral-100 px-2 py-0.5 rounded-full">Capacitor APK</span>
+              </div>
+              <div className="flex flex-col gap-1 text-[10px] font-black">
+                <span className="text-neutral-400 uppercase tracking-tight">Backend Endpoint:</span>
+                <span className="text-primary break-all bg-primary/5 p-2 rounded-xl border border-primary/10 select-all mb-2">
+                  {getBaseUrl() || 'Direct Database Access'}
+                </span>
+                <div className="flex items-center justify-between gap-3">
+                  <button 
+                    type="button"
+                    onClick={checkHealth}
+                    className="flex-1 bg-neutral-900 text-white py-2 rounded-lg text-[9px] uppercase tracking-widest font-black active:scale-95 transition-all"
+                  >
+                    Test Connection
+                  </button>
+                  <div className={cn(
+                    "px-3 py-2 rounded-lg text-[9px] font-black uppercase flex-1 text-center",
+                    debugHealth === 'OK' ? "bg-emerald-500 text-white" : 
+                    debugHealth === 'FAIL' ? "bg-red-500 text-white" : "bg-neutral-100 text-neutral-400"
+                  )}>
+                    {debugHealth === 'IDLE' ? 'READY' : debugHealth} {debugStatus && `(${debugStatus})`}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <footer className="mt-auto flex justify-center gap-6 text-neutral-400 font-bold text-xs">

@@ -558,34 +558,45 @@ export async function createDriverApi(driverData: Omit<Driver, 'rating' | 'total
 
 export async function updateDriverOnlineStatus(driverId: string, isOnline: boolean): Promise<boolean> {
   const url = `${getBaseUrl()}/api/drivers/${driverId}/online`;
-  console.log(`[API] PATCH ${url} | body:`, { isOnline });
+  console.log(`[API] POST (Online Toggle) ${url} | body:`, { isOnline });
   try {
-    // Try backend first
+    // Try backend first - using POST instead of PATCH for better mobile compatibility
     const response = await fetch(url, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
       body: JSON.stringify({ isOnline })
     });
 
     if (response.ok) {
-      console.log('[API] PATCH online status success');
+      const data = await response.json();
+      console.log('[API] Update online status success:', data);
       return true;
     }
 
-    console.warn('[API] PATCH online status failed, status:', response.status);
+    const errorText = await response.text();
+    console.warn(`[API] PATCH online status failed (${response.status}):`, errorText.substring(0, 100));
 
-    // Fallback to client-side Supabase
-    if (!isSupabaseConfigured) return false;
+    // Fallback to client-side Supabase if backend fails
+    if (isSupabaseConfigured) {
+      console.log('[API] Falling back to client-side Supabase');
+      const { error } = await supabase
+        .from('drivers')
+        .update({ is_online: isOnline })
+        .eq('id', driverId);
 
-    const { error } = await supabase
-      .from('drivers')
-      .update({ is_online: isOnline })
-      .eq('id', driverId);
-
-    if (error) throw error;
-    return true;
+      if (!error) {
+        console.log('[API] Client-side fallback success');
+        return true;
+      }
+      console.error('[API] Client-side fallback failed:', error);
+    }
+    
+    return false;
   } catch (e: any) {
-    console.error('Supabase update driver status error:', e.message || e);
+    console.error('[API] updateDriverOnlineStatus exception:', e.message || e);
     return false;
   }
 }
