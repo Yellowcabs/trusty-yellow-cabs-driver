@@ -7,11 +7,17 @@
     "dev": "tsx server.ts",
     "build": "vite build",
     "build:server": "tsc server.ts --outDir dist --module esnext --target esnext --moduleResolution node",
+    "cap:sync": "npm run build && npx cap sync",
+    "cap:open": "npx cap open android",
+    "cap:copy": "npx cap copy android",
     "start": "NODE_ENV=production node dist/server.js",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@capacitor/android": "^8.3.3",
+    "@capacitor/cli": "^8.3.3",
+    "@capacitor/core": "^8.3.3",
     "@google/genai": "^1.29.0",
     "@react-google-maps/api": "^2.20.8",
     "@supabase/ssr": "^0.10.3",

@@ -37,6 +37,7 @@
 
 import { Trip, Driver } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { getBaseUrl } from '../lib/config';
 
 /**
  * SUPABASE SQL SCHEMA (Run this in Supabase SQL Editor)
@@ -144,7 +145,7 @@ export async function fetchTrips(filters?: { status?: Trip['status']; driverId?:
     if (filters?.limit) params.append('limit', filters.limit.toString());
     
     const queryStr = params.toString();
-    const url = `/api/trips${queryStr ? '?' + queryStr : ''}`;
+    const url = `${getBaseUrl()}/api/trips${queryStr ? '?' + queryStr : ''}`;
 
     // Try to fetch from backend first
     const response = await fetch(url);
@@ -258,7 +259,7 @@ export async function createTripApi(trip: Omit<Trip, 'id' | 'status' | 'timestam
     };
 
     // Try backend first
-    const response = await fetch('/api/trips', {
+    const response = await fetch(`${getBaseUrl()}/api/trips`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newTripRow)
@@ -427,7 +428,7 @@ export async function fetchDrivers(filters?: { isOnline?: boolean; search?: stri
     if (filters?.limit) params.append('limit', filters.limit.toString());
     
     const queryStr = params.toString();
-    const url = `/api/drivers${queryStr ? '?' + queryStr : ''}`;
+    const url = `${getBaseUrl()}/api/drivers${queryStr ? '?' + queryStr : ''}`;
 
     // Try to fetch from backend first
     const response = await fetch(url);
@@ -549,7 +550,7 @@ export async function createDriverApi(driverData: Omit<Driver, 'rating' | 'total
 export async function updateDriverOnlineStatus(driverId: string, isOnline: boolean): Promise<boolean> {
   try {
     // Try backend first
-    const response = await fetch(`/api/drivers/${driverId}/online`, {
+    const response = await fetch(`${getBaseUrl()}/api/drivers/${driverId}/online`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ isOnline })

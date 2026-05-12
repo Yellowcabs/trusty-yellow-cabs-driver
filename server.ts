@@ -151,14 +151,15 @@ app.post("/api/trips", async (req, res) => {
                   body: `Pickup: ${newTrip.pickup} to ${newTrip.drop}`,
                   icon: 'https://cdn-icons-png.flaticon.com/512/3063/3063822.png',
                   vibrate: [500, 100, 500, 100, 500, 100, 500],
-                  requireInteraction: true // Keeps notification visible until user acts
+                  requireInteraction: true 
                 }
               }
             });
           }
         }
-      } catch (e: any) {
-        console.error("Push Notification error:", e.message || e);
+      } catch (err: any) {
+        const errorMsg = err.message || 'Unknown FCM error';
+        console.error("Push Notification error:", errorMsg);
       }
     })();
 

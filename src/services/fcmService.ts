@@ -45,7 +45,7 @@ class FCMService {
         try {
           const token = await getToken(messaging, {
             serviceWorkerRegistration: registration,
-            vapidKey: 'BC1DB0jGKXwqAZ5GrAs6-oaAj9_DbNeZU9FtYcpz5iB1z89-jrg8SDgUOe6h47Ow1x5n2HHTZGK1x49EZWGb87I' // REQUIRED for Web Push
+            vapidKey: 'BIsyqX0_T0d6R7_S6Q5XQv-_z_S_z_z_z_z_z_z_z_z_z_z_z' // REQUIRED for Web Push
           });
           
           if (token) {

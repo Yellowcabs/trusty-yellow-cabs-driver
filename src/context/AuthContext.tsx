@@ -31,35 +31,104 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (driver?.id && driver.id !== 'admin' && driver.isOnline && !driver.isBlocked) {
+    if (driver?.id && driver.id !== 'admin' && !driver.isBlocked) {
       const interval = setInterval(() => {
         refreshDriverStatus();
       }, 30000); // Check every 30 seconds
 
       // Background-friendly Location Watcher
       let watchId: number | null = null;
+      let wakeLock: any = null;
+      let silentAudio: HTMLAudioElement | null = null;
+
+      // Silent audio hack to keep process alive in background/locked states
+      const startSilentAudio = () => {
+        if (silentAudio) return;
+        // 1 second of silence (WAV data URI)
+        silentAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAP7/AAD+Pw==');
+        silentAudio.loop = true;
+        silentAudio.volume = 0.01; 
+        
+        // Media Session API - makes browser think music is playing to keep process alive
+        if ('mediaSession' in navigator) {
+          (navigator as any).mediaSession.metadata = new (window as any).MediaMetadata({
+            title: 'Trusty Cab - Tracking Active',
+            artist: driver?.name,
+            album: 'Background Service',
+            artwork: [
+              { src: 'https://cdn-icons-png.flaticon.com/512/3063/3063822.png', sizes: '512x512', type: 'image/png' }
+            ]
+          });
+          
+          // Action handlers to satisfy media session
+          (navigator as any).mediaSession.setActionHandler('play', () => silentAudio?.play());
+          (navigator as any).mediaSession.setActionHandler('pause', () => silentAudio?.pause());
+        }
+
+        silentAudio.play().catch(e => console.log('Silent audio play blocked:', e));
+      };
+
+      const requestWakeLock = async () => {
+        if (!driver?.isOnline) return; // Only wake lock when online
+        try {
+          if ('wakeLock' in navigator) {
+            wakeLock = await (navigator as any).wakeLock.request('screen');
+            console.log('Wake Lock is active');
+          }
+        } catch (err: any) {
+          console.error(`Wake Lock Error: ${err.name}, ${err.message}`);
+        }
+      };
+
       if ('geolocation' in navigator) {
+        if (driver?.isOnline) {
+          requestWakeLock();
+          startSilentAudio();
+        }
+
         watchId = navigator.geolocation.watchPosition(
           async (pos) => {
-            const { latitude, longitude, heading } = pos.coords;
-            const { updateLocationApi } = await import('../services/api');
-            await updateLocationApi(driver.id, latitude, longitude, heading || undefined);
+            const { latitude, longitude, heading, accuracy } = pos.coords;
+            console.log(`Location: ${latitude}, ${longitude} (acc: ${accuracy}m) status: ${driver?.isOnline ? 'ONLINE' : 'OFFLINE'}`);
             
-            // Sync local state if accuracy is good
-            setDriver(prev => prev ? { ...prev, latitude, longitude, heading: heading || undefined } : null);
+            try {
+              const { updateLocationApi } = await import('../services/api');
+              await updateLocationApi(driver.id, latitude, longitude, heading || undefined);
+              
+              // Sync local state cautiously to avoid loops if needed, but here it's fine
+              // We only update lat/lng if they changed significantly or periodically
+              setDriver(prev => prev ? { ...prev, latitude, longitude, heading: heading || undefined } : null);
+            } catch (e) {
+              console.error('Failed to update location API:', e);
+            }
           },
-          (err) => console.error('Location Error:', err),
+          (err) => console.error('Tracking Error:', err),
           {
             enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
+            timeout: 15000,
+            maximumAge: 10000
           }
         );
       }
 
+      const handleVisibilityChange = () => {
+        if (driver?.isOnline && document.visibilityState === 'visible') {
+          requestWakeLock();
+        }
+      };
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+
       return () => {
         clearInterval(interval);
         if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+        if (wakeLock !== null) {
+          wakeLock.release().then(() => { wakeLock = null; });
+        }
+        if (silentAudio) {
+          silentAudio.pause();
+          silentAudio = null;
+        }
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
     }
   }, [driver?.id, driver?.isOnline, driver?.isBlocked]);
