@@ -7,11 +7,8 @@ class FCMService {
   private isSoundPlaying = false;
   private isAudioUnlocked = false;
 
-  private isCapacitor = false;
-
   constructor() {
     if (typeof window !== 'undefined') {
-      this.isCapacitor = !!((window as any).Capacitor || (window as any).webkit?.messageHandlers?.bridge || navigator.userAgent.includes('Capacitor'));
       this.audio = new Audio('/trip.mp3');
       this.audio.loop = true;
     }
@@ -34,99 +31,9 @@ class FCMService {
   }
 
   async requestPermission(driverId: string) {
-    if (typeof window === 'undefined' || !driverId || driverId === 'admin') return;
-
-    if (this.isCapacitor) {
-      console.log('[FCM] Starting Capacitor Push Setup for Driver:', driverId);
-      try {
-        const { PushNotifications } = await import('@capacitor/push-notifications');
-        
-        if (!PushNotifications) {
-          console.warn('[FCM] PushNotifications plugin not found');
-          return null;
-        }
-
-        // 1. Add listeners FIRST inside a safe block
-        try {
-          await PushNotifications.removeAllListeners().catch(() => {});
-          
-          PushNotifications.addListener('registration', async (token) => {
-            console.log('[FCM] Token acquired:', token.value);
-            if (token.value) {
-              await updateFcmTokenApi(driverId, token.value).catch(e => console.error('[FCM] Token sync error:', e));
-            }
-          });
-          
-          PushNotifications.addListener('registrationError', (error) => {
-            console.error('[FCM] Registration Error:', error);
-          });
-
-          PushNotifications.addListener('pushNotificationReceived', (notification) => {
-            console.log('[FCM] Notification received:', notification);
-            if (notification.data?.type === 'NEW_TRIP' || notification.title?.includes('New Trip')) {
-              this.startTripSound();
-            }
-          });
-        } catch (listenerError) {
-          console.warn('[FCM] Listener setup partial failure:', listenerError);
-        }
-
-        // 2. Request Permissions
-        let permStatus = await PushNotifications.requestPermissions().catch(e => {
-          console.error('[FCM] Permission request CRASH PREVENTED:', e);
-          return { receive: 'denied' };
-        });
-
-        console.log('[FCM] Permission Result:', permStatus.receive);
-
-        // 3. Register ONLY if granted
-        if (permStatus.receive === 'granted') {
-          // Delay registration slightly to ensure native bridge stability
-          setTimeout(async () => {
-            try {
-              console.log('[FCM] Calling register()...');
-              await PushNotifications.register();
-              
-              // 4. Create Channel (Android Only)
-              if ((window as any).Capacitor?.getPlatform() === 'android') {
-                await PushNotifications.createChannel({
-                  id: 'trips',
-                  name: 'New Trip Alerts',
-                  description: 'Alerts for nearby trip requests',
-                  importance: 5,
-                  visibility: 1,
-                  vibration: true,
-                  sound: 'trip.mp3'
-                }).catch(e => console.warn('[FCM] Channel creation fail:', e));
-              }
-            } catch (regError) {
-              console.error('[FCM] Push Registration crashed/failed (Caught):', regError);
-            }
-          }, 1500);
-        } else {
-          console.warn('[FCM] Push permission denied by user or OS');
-        }
-      } catch (err) {
-        console.error('[FCM] Critical Capacitor Setup Exception (Prevention of crash):', err);
-      }
-      return null;
-    }
-
-    if (!messaging) return;
+    if (!messaging || typeof window === 'undefined') return;
 
     try {
-      // Check for Service Worker support
-      if (!('serviceWorker' in navigator)) {
-        console.warn('Service Worker not supported in this environment');
-        return null;
-      }
-
-      // Check for Notification support
-      if (!('Notification' in window)) {
-        console.warn('Notifications not supported in this environment');
-        return null;
-      }
-
       // Register the service worker explicitly
       const registration = await navigator.serviceWorker.register('/sw.js', {
         scope: '/'
@@ -224,19 +131,15 @@ class FCMService {
   }
 
   stopTripSound() {
-    this.isSoundPlaying = false;
-    if (this.audio) {
-      try {
-        this.audio.pause();
-        this.audio.currentTime = 0;
-      } catch (e) {
-        console.warn('[FCM] Sound stop error:', e);
+    if (this.audio && this.isSoundPlaying) {
+      this.audio.pause();
+      this.audio.currentTime = 0;
+      this.isSoundPlaying = false;
+      
+      if (navigator.vibrate) {
+        navigator.vibrate(0);
       }
     }
-    if (navigator.vibrate) {
-      navigator.vibrate(0);
-    }
-    console.log('[FCM] Trip sound stopped');
   }
 }
 

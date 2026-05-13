@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { cn } from './lib/utils';
-import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'motion/react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { TripProvider, useTrips } from './context/TripContext';
@@ -52,15 +52,17 @@ function Layout() {
           "mx-auto",
           hideNav ? "w-full" : "max-w-6xl"
         )}>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/" element={<PrivateRoute><HomePage /></PrivateRoute>} />
-            <Route path="/requests" element={<PrivateRoute><RequestsPage /></PrivateRoute>} />
-            <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
-            <Route path="/history" element={<PrivateRoute><HistoryPage /></PrivateRoute>} />
-            <Route path="/profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
-            <Route path="/office-pay" element={<PrivateRoute><OfficePayPage /></PrivateRoute>} />
-          </Routes>
+          <AnimatePresence mode="wait">
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/" element={<PrivateRoute><HomePage /></PrivateRoute>} />
+              <Route path="/requests" element={<PrivateRoute><RequestsPage /></PrivateRoute>} />
+              <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
+              <Route path="/history" element={<PrivateRoute><HistoryPage /></PrivateRoute>} />
+              <Route path="/profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
+              <Route path="/office-pay" element={<PrivateRoute><OfficePayPage /></PrivateRoute>} />
+            </Routes>
+          </AnimatePresence>
         </div>
       </main>
       
@@ -78,86 +80,20 @@ function Layout() {
   );
 }
 
-import { getBaseUrl } from './lib/config';
-
-class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: any}> {
-  constructor(props: any) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: any) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: any, errorInfo: any) {
-    console.error('[FATAL ERROR]', error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-screen bg-red-600 p-8 text-white flex flex-col items-center justify-center text-center">
-          <h1 className="text-2xl font-black mb-4 uppercase tracking-tighter">Application Error</h1>
-          <p className="bg-black/20 p-4 rounded-xl text-xs font-mono break-all mb-6 max-w-sm">
-            {this.state.error?.message || 'Unknown Crash'}
-          </p>
-          <button 
-            onClick={() => {
-               localStorage.clear();
-               window.location.href = '/';
-            }}
-            className="bg-white text-red-600 px-8 py-4 rounded-2xl font-black uppercase text-sm"
-          >
-            Reset App & Data
-          </button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
 export default function App() {
   const apiKey = process.env.GOOGLE_MAPS_PLATFORM_KEY || import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
   
-  useEffect(() => {
-    const isCapacitor = (window as any).Capacitor || (window as any).webkit?.messageHandlers?.bridge;
-    console.log('[DEBUG] App Start');
-    console.log('[DEBUG] Hostname:', window.location.hostname);
-    console.log('[DEBUG] Protocol:', window.location.protocol);
-    console.log('[DEBUG] Backend URL:', getBaseUrl());
-    console.log('[DEBUG] Capacitor Detect:', !!isCapacitor);
-
-    // Capacitor App State Listeners
-    if (isCapacitor) {
-      import('@capacitor/app').then(({ App: CapApp }) => {
-        CapApp.addListener('appStateChange', ({ isActive }) => {
-          console.log('[DEBUG] App State Change:', isActive ? 'FOREGROUND' : 'BACKGROUND');
-          if (isActive) {
-            // App came to foreground, trigger any necessary refreshes
-            window.dispatchEvent(new CustomEvent('app-foreground'));
-          }
-        });
-      });
-    }
-
-    // Connection check happens on first meaningful use or in Login page debug tool
-  }, []);
-
   return (
-    <ErrorBoundary>
-      <APIProvider apiKey={apiKey} libraries={['places', 'marker', 'geometry']}>
-        <AuthProvider>
-          <TripProvider>
-            <NotificationManager />
-            <LocationTracker />
-            <Router>
-              <Layout />
-            </Router>
-          </TripProvider>
-        </AuthProvider>
-      </APIProvider>
-    </ErrorBoundary>
+    <APIProvider apiKey={apiKey} libraries={['places', 'marker', 'geometry']}>
+      <AuthProvider>
+        <TripProvider>
+          <NotificationManager />
+          <LocationTracker />
+          <BrowserRouter>
+            <Layout />
+          </BrowserRouter>
+        </TripProvider>
+      </AuthProvider>
+    </APIProvider>
   );
 }

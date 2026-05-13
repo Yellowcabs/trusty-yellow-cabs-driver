@@ -65,7 +65,7 @@ export function HistoryPage() {
 
     {/* Trip ID (BIG & VISIBLE) */}
     <p className="text-lg font-black text-neutral-900 tracking-tight">
-      TRIP #{(trip.id || '').toString().slice(-4).toUpperCase() || '....'}
+      TRIP #{trip.id.slice(-4).toUpperCase()}
     </p>
 
     {/* Status */}

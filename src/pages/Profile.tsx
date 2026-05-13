@@ -73,7 +73,7 @@ export function ProfilePage() {
                 <p className="text-[12px] font-black text-neutral-400 uppercase tracking-widest">Active Driver</p>
              </div>
             <p className="mt-4 text-base font-extrabold bg-neutral-200 text-neutral-900 px-4 py-2 rounded-xl uppercase tracking-widest inline-block">
-  #{driver.id?.toUpperCase() || 'UNKNOWN'}
+  #{driver.id.toUpperCase()}
 </p>
           </div>
         </div>
@@ -100,7 +100,7 @@ export function ProfilePage() {
                  <div className="flex-1">
                     <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest leading-none mb-1.5">Secret PIN</p>
                     <p className="text-lg font-black text-neutral-900 tracking-[0.5em]">
-                      {showPin ? (driver.pin || '....') : `••••${(driver.pin || '').slice(-2)}`}
+                      {showPin ? driver.pin : `••••${driver.pin.slice(-2)}`}
                     </p>
                  </div>
               <button

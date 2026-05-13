@@ -8,8 +8,8 @@ import { fcmService } from '../services/fcmService';
 
 export function RequestsPage() {
   const { driver } = useAuth();
-  const { pendingTrips, acceptTrip, rejectTrip, loadingTripIds } = useTrips();
-  const [permission, setPermission] = React.useState<string>(typeof Notification !== 'undefined' ? Notification.permission : 'denied');
+  const { pendingTrips, acceptTrip, rejectTrip } = useTrips();
+  const [permission, setPermission] = React.useState(typeof Notification !== 'undefined' ? Notification.permission : 'denied');
 
   if (driver?.isBlocked) {
     return (
@@ -20,43 +20,8 @@ export function RequestsPage() {
     );
   }
 
-  const requestPermission = async () => {
-    const isCapacitor = (window as any).Capacitor;
-    
-    // Unlock audio first
-    fcmService.unlockAudio();
-
-    if (isCapacitor) {
-      try {
-        const { Geolocation } = await import('@capacitor/geolocation');
-        console.log('[Perms] Triggering Location + Push...');
-        
-        // 1. Request Foreground Location
-        const locPerms = await Geolocation.requestPermissions();
-        console.log('[Perms] Foreground Status:', locPerms.location);
-        
-        if (locPerms.location === 'granted') {
-           // On Android, if we want "Allow all the time", we might need to prompt specifically for background
-           // Note: Capacitor 5+ handles this via specific requestPermissions calls if configured
-           // but often requires manual user action in OS settings.
-           console.log('[Perms] Foreground granted. Background usage depends on OS settings.');
-        }
-
-        // 2. Request Push Notifications
-        if (driver && driver.id !== 'admin') {
-          console.log('[Perms] Initializing Push Registration...');
-          // fcmService.requestPermission handles its own try/catch and listeners
-          await fcmService.requestPermission(driver.id);
-          
-          // Re-check permission state to update local UI
-          const { PushNotifications } = await import('@capacitor/push-notifications');
-          const pushStatus = await PushNotifications.checkPermissions();
-          setPermission(pushStatus.receive);
-        }
-      } catch (e) {
-        console.error('[Perms] Native permission request failed:', e);
-      }
-    } else if (typeof Notification !== 'undefined') {
+  const requestPermission = () => {
+    if (typeof Notification !== 'undefined') {
       Notification.requestPermission().then((res) => {
         setPermission(res);
         if (res === 'granted' && driver && driver.id !== 'admin') {
@@ -64,6 +29,8 @@ export function RequestsPage() {
         }
       });
     }
+    // Explicitly unlock audio on user action
+    fcmService.unlockAudio();
   };
 
   return (
@@ -102,7 +69,6 @@ export function RequestsPage() {
                     trip={trip} 
                     onAccept={acceptTrip}
                     onReject={rejectTrip} 
-                    isLoading={loadingTripIds.has(trip.id)}
                   />
                 </div>
               ))}

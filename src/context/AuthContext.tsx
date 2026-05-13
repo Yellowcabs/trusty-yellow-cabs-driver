@@ -23,73 +23,127 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const savedDriver = localStorage.getItem('trusty_driver');
     if (savedDriver) {
-      try {
-        const parsed = JSON.parse(savedDriver);
-        if (parsed && parsed.id) {
-          setDriver(parsed);
-          // Refresh status on load if possible
-          refreshDriverStatus(parsed.id);
-        }
-      } catch (e) {
-        console.error('[Auth] Failed to parse saved driver:', e);
-        localStorage.removeItem('trusty_driver');
-      }
+      setDriver(JSON.parse(savedDriver));
+      // Refresh status on load if possible
+      refreshDriverStatus(JSON.parse(savedDriver).id);
     }
     setIsLoading(false);
   }, []);
 
-  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
-  const [lastToggleTime, setLastToggleTime] = useState(0);
-
   useEffect(() => {
-    if (driver?.id && driver.id !== 'admin' && !driver.isBlocked && !isUpdatingStatus) {
+    if (driver?.id && driver.id !== 'admin' && !driver.isBlocked) {
       const interval = setInterval(() => {
-        // Only refresh if we haven't toggled recently (within 15 seconds)
-        if (Date.now() - lastToggleTime > 15000) {
-          refreshDriverStatus();
-        }
+        refreshDriverStatus();
       }, 30000); // Check every 30 seconds
+
+      // Background-friendly Location Watcher
+      let watchId: number | null = null;
+      let wakeLock: any = null;
+      let silentAudio: HTMLAudioElement | null = null;
+
+      // Silent audio hack to keep process alive in background/locked states
+      const startSilentAudio = () => {
+        if (silentAudio) return;
+        // 1 second of silence (WAV data URI)
+        silentAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAP7/AAD+Pw==');
+        silentAudio.loop = true;
+        silentAudio.volume = 0.01; 
+        
+        // Media Session API - makes browser think music is playing to keep process alive
+        if ('mediaSession' in navigator) {
+          (navigator as any).mediaSession.metadata = new (window as any).MediaMetadata({
+            title: 'Trusty Cab - Tracking Active',
+            artist: driver?.name,
+            album: 'Background Service',
+            artwork: [
+              { src: 'https://cdn-icons-png.flaticon.com/512/3063/3063822.png', sizes: '512x512', type: 'image/png' }
+            ]
+          });
+          
+          // Action handlers to satisfy media session
+          (navigator as any).mediaSession.setActionHandler('play', () => silentAudio?.play());
+          (navigator as any).mediaSession.setActionHandler('pause', () => silentAudio?.pause());
+        }
+
+        silentAudio.play().catch(e => console.log('Silent audio play blocked:', e));
+      };
+
+      const requestWakeLock = async () => {
+        if (!driver?.isOnline) return; // Only wake lock when online
+        try {
+          if ('wakeLock' in navigator) {
+            wakeLock = await (navigator as any).wakeLock.request('screen');
+            console.log('Wake Lock is active');
+          }
+        } catch (err: any) {
+          console.error(`Wake Lock Error: ${err.name}, ${err.message}`);
+        }
+      };
+
+      if ('geolocation' in navigator) {
+        if (driver?.isOnline) {
+          requestWakeLock();
+          startSilentAudio();
+        }
+
+        watchId = navigator.geolocation.watchPosition(
+          async (pos) => {
+            const { latitude, longitude, heading, accuracy } = pos.coords;
+            console.log(`Location: ${latitude}, ${longitude} (acc: ${accuracy}m) status: ${driver?.isOnline ? 'ONLINE' : 'OFFLINE'}`);
+            
+            try {
+              const { updateLocationApi } = await import('../services/api');
+              await updateLocationApi(driver.id, latitude, longitude, heading || undefined);
+              
+              // Sync local state cautiously to avoid loops if needed, but here it's fine
+              // We only update lat/lng if they changed significantly or periodically
+              setDriver(prev => prev ? { ...prev, latitude, longitude, heading: heading || undefined } : null);
+            } catch (e) {
+              console.error('Failed to update location API:', e);
+            }
+          },
+          (err) => console.error('Tracking Error:', err),
+          {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 10000
+          }
+        );
+      }
+
+      const handleVisibilityChange = () => {
+        if (driver?.isOnline && document.visibilityState === 'visible') {
+          requestWakeLock();
+        }
+      };
+      document.addEventListener('visibilitychange', handleVisibilityChange);
 
       return () => {
         clearInterval(interval);
+        if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+        if (wakeLock !== null) {
+          wakeLock.release().then(() => { wakeLock = null; });
+        }
+        if (silentAudio) {
+          silentAudio.pause();
+          silentAudio = null;
+        }
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
     }
-  }, [driver?.id, driver?.isOnline, driver?.isBlocked, isUpdatingStatus, lastToggleTime]);
-
-  useEffect(() => {
-    const handleForeground = () => {
-      console.log('[Auth] Detected foreground, refreshing status...');
-      // Only refresh if we haven't toggled recently
-      if (Date.now() - lastToggleTime > 15000) {
-        refreshDriverStatus();
-      }
-    };
-    window.addEventListener('app-foreground', handleForeground);
-    return () => window.removeEventListener('app-foreground', handleForeground);
-  }, [driver?.id, lastToggleTime]);
+  }, [driver?.id, driver?.isOnline, driver?.isBlocked]);
 
   const refreshDriverStatus = async (forcedId?: string) => {
     const driverId = forcedId || driver?.id;
-    if (!driverId || driverId === 'admin' || isUpdatingStatus) return;
+    if (!driverId || driverId === 'admin') return;
     
-    try {
-      const { fetchDrivers } = await import('../services/api');
-      const allDrivers = await fetchDrivers();
-      const current = allDrivers.find(d => d.id === driverId);
-      
-      if (current) {
-        // SECURITY: If we're currently online locally, and the server says offline,
-        // we trust the local state if it's very recent (the backend is likely lagging)
-        if (driver?.isOnline && !current.isOnline && (Date.now() - lastToggleTime < 15000)) {
-           console.log('[Auth] Ignoring server offline status due to recent manual toggle');
-           return;
-        }
-
-        setDriver(current);
-        localStorage.setItem('trusty_driver', JSON.stringify(current));
-      }
-    } catch (e) {
-      console.warn('[Auth] Status refresh failed', e);
+    const { fetchDrivers } = await import('../services/api');
+    const allDrivers = await fetchDrivers();
+    const current = allDrivers.find(d => d.id === driverId);
+    
+    if (current) {
+      setDriver(current);
+      localStorage.setItem('trusty_driver', JSON.stringify(current));
     }
   };
 
@@ -120,17 +174,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { getDriverByLogin } = await import('../services/api');
     // Try fetching from Supabase for all other users
-    try {
-      const dbDriver = await getDriverByLogin(id, pin);
-      if (dbDriver) {
-        if (dbDriver.isBlocked) return false;
-        
-        setDriver(dbDriver);
-        localStorage.setItem('trusty_driver', JSON.stringify(dbDriver));
-        return true;
-      }
-    } catch (e) {
-      console.error('[Auth] Login error:', e);
+    const dbDriver = await getDriverByLogin(id, pin);
+    if (dbDriver) {
+      if (dbDriver.isBlocked) return false;
+      
+      setDriver(dbDriver);
+      localStorage.setItem('trusty_driver', JSON.stringify(dbDriver));
+      return true;
     }
 
     return false;
@@ -144,29 +194,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const toggleOnline = async (status: boolean) => {
     if (!driver || driver.isBlocked) return;
-    console.log(`[Auth] Toggling Online Status: ${status}`);
-    
-    setIsUpdatingStatus(true);
-    setLastToggleTime(Date.now());
     const { updateDriverOnlineStatus } = await import('../services/api');
-    
-    try {
-      const success = await updateDriverOnlineStatus(driver.id, status);
-      if (success) {
-        console.log('[Auth] Toggle Success');
-        const updatedDriver = { ...driver, isOnline: status };
-        setDriver(updatedDriver);
-        localStorage.setItem('trusty_driver', JSON.stringify(updatedDriver));
-      } else {
-        console.error('[Auth] Toggle Failed');
-        // On failure, we sync back from server
-        await refreshDriverStatus();
-      }
-    } catch (err) {
-      console.error('[Auth] Toggle Exception:', err);
-    } finally {
-      // Delay unsetting updating flag to let server settle
-      setTimeout(() => setIsUpdatingStatus(false), 5000);
+    const success = await updateDriverOnlineStatus(driver.id, status);
+    if (success) {
+      const updatedDriver = { ...driver, isOnline: status };
+      setDriver(updatedDriver);
+      localStorage.setItem('trusty_driver', JSON.stringify(updatedDriver));
     }
   };
 

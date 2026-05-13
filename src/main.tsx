@@ -13,36 +13,8 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-if (typeof window !== 'undefined') {
-  window.onerror = function(message, source, lineno, colno, error) {
-    console.error('[Global Error]', { message, source, lineno, colno, error });
-    return false;
-  };
-
-  window.onunhandledrejection = function(event) {
-    console.error('[Global Promise Rejection]', event.reason);
-  };
-}
-
-const root = document.getElementById('root');
-if (root) {
-  const reactRoot = createRoot(root);
-  reactRoot.render(
-    <StrictMode>
-      <App />
-    </StrictMode>,
-  );
-
-  // Remove loading screen after React is ready
-  window.addEventListener('load', () => {
-    setTimeout(() => {
-      const loader = document.getElementById('app-loading-screen');
-      if (loader) {
-        loader.style.opacity = '0';
-        loader.style.pointerEvents = 'none';
-        loader.style.transition = 'opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
-        setTimeout(() => loader.remove(), 600);
-      }
-    }, 800);
-  });
-}
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);

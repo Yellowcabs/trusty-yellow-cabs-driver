@@ -1,5 +1,4 @@
 import express from "express";
-import cors from "cors";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -35,44 +34,14 @@ const supabase = (supabaseUrl && supabaseKey && !supabaseUrl.includes('placehold
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-app.use(cors({
-  origin: true,
-  credentials: true,
-  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'Origin'],
-  exposedHeaders: ['Content-Length', 'X-JSON']
-}));
 app.use(express.json());
-
-// Detailed Request logger
-app.use((req, res, next) => {
-  const origin = req.get('origin') || '*';
-  const userAgent = req.get('user-agent') || 'no-agent';
-  
-  // Robust mobile origin detection
-  const isMobileApp = origin.includes('localhost') || origin.startsWith('capacitor://') || origin.startsWith('http://localhost') || origin.startsWith('file://');
-  
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  
-  // Set CORS headers manually to ensure reliability across all platforms
-  res.header('Access-Control-Allow-Origin', origin === 'null' ? '*' : origin);
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, X-Requested-With, Origin, Cache-Control, Pragma');
-  res.header('Access-Control-Allow-Credentials', 'true');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-  next();
-});
 
 // API routes
 app.get("/api/health", (req, res) => {
   res.json({ 
     status: "ok", 
     message: "Trusty Yellow Backend is running",
-    databaseConnected: !!supabase,
-    timestamp: new Date().toISOString()
+    databaseConnected: !!supabase
   });
 });
 
@@ -168,7 +137,7 @@ app.post("/api/trips", async (req, res) => {
                 priority: 'high',
                 notification: {
                   sound: 'trip.mp3',
-                  channelId: 'trips',
+                  channelId: 'trip-requests',
                   priority: 'high',
                   visibility: 'public'
                 }
@@ -200,23 +169,6 @@ app.post("/api/trips", async (req, res) => {
   }
 });
 
-// Alias POST to PATCH for compatibility
-app.post("/api/drivers/:id/online", async (req, res) => {
-  if (!supabase) return res.status(503).json({ error: "Database not configured" });
-  const { isOnline } = req.body;
-  try {
-    const { data, error } = await supabase
-      .from('drivers')
-      .update({ is_online: isOnline })
-      .eq('id', req.params.id)
-      .select();
-    if (error) throw error;
-    res.json(data[0]);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 app.patch("/api/drivers/:id/online", async (req, res) => {
   if (!supabase) return res.status(503).json({ error: "Database not configured" });
   const { isOnline } = req.body;
@@ -228,110 +180,6 @@ app.patch("/api/drivers/:id/online", async (req, res) => {
       .select();
     if (error) throw error;
     res.json(data[0]);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.patch("/api/drivers/:id/location", async (req, res) => {
-  if (!supabase) return res.status(503).json({ error: "Database not configured" });
-  try {
-    const { latitude, longitude, heading, lastSeen } = req.body;
-    const updateData: any = { 
-      latitude, 
-      longitude, 
-      last_seen: lastSeen || new Date().toISOString() 
-    };
-    if (heading !== undefined) updateData.heading = heading;
-
-    const { data, error } = await supabase
-      .from('drivers')
-      .update(updateData)
-      .eq('id', req.params.id)
-      .select();
-    if (error) throw error;
-    res.json(data[0] || { success: true });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post("/api/trips/:id/reject", async (req, res) => {
-  if (!supabase) return res.status(503).json({ error: "Database not configured" });
-  const { driverId, rejectedBy } = req.body;
-  try {
-    const { data, error } = await supabase
-      .from('trips')
-      .update({ rejected_by: rejectedBy })
-      .eq('id', req.params.id)
-      .select();
-    if (error) throw error;
-    res.json(data[0] || { success: true });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.patch("/api/trips/:id", async (req, res) => {
-  if (!supabase) return res.status(503).json({ error: "Database not configured" });
-  try {
-    const { data, error } = await supabase
-      .from('trips')
-      .update(req.body)
-      .eq('id', req.params.id)
-      .select();
-    if (error) throw error;
-    res.json(data[0]);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.get("/api/drivers/:id", async (req, res) => {
-  if (!supabase) return res.status(503).json({ error: "Database not configured" });
-  try {
-    const { data, error } = await supabase
-      .from('drivers')
-      .select('*')
-      .eq('id', req.params.id)
-      .single();
-    if (error) throw error;
-    res.json(data);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post("/api/login", async (req, res) => {
-  if (!supabase) return res.status(503).json({ error: "Database not configured" });
-  const { identifier, pin } = req.body;
-  try {
-    // Try login by ID
-    let { data, error } = await supabase
-      .from('drivers')
-      .select('*')
-      .eq('id', identifier)
-      .eq('pin', pin)
-      .single();
-
-    // If ID fails, try login by Phone
-    if (error || !data) {
-      const { data: phoneData, error: phoneError } = await supabase
-        .from('drivers')
-        .select('*')
-        .eq('phone', identifier)
-        .eq('pin', pin)
-        .single();
-      
-      data = phoneData;
-      error = phoneError;
-    }
-
-    if (error || !data) {
-      return res.status(401).json({ error: "Invalid ID or PIN" });
-    }
-
-    res.json(data);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -353,10 +201,10 @@ async function setupApp() {
     });
   }
 
-  // Final listen binding optimized for production
+  // Only listen if not on Vercel
   if (!process.env.VERCEL) {
     app.listen(PORT, "0.0.0.0", () => {
-      console.log(`[Production] Server listening on 0.0.0.0:${PORT}`);
+      console.log(`Server running on http://localhost:${PORT}`);
     });
   }
 }

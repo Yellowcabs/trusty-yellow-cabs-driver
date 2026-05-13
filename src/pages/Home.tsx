@@ -25,19 +25,13 @@ export function HomePage() {
     }
   }, [driver?.isBlocked]);
 
-  // Calculate earnings and rides today safely
+  // Calculate earnings and rides today
   const today = new Date().setHours(0, 0, 0, 0);
-  const myCompletedTripsToday = (allTrips || []).filter(t => {
-    if (!t || !t.timestamp) return false;
-    try {
-      const tripDate = new Date(t.timestamp).setHours(0, 0, 0, 0);
-      return t.driverId === driver?.id && 
-             t.status === 'COMPLETED' && 
-             tripDate === today;
-    } catch (e) {
-      return false;
-    }
-  });
+  const myCompletedTripsToday = allTrips.filter(t => 
+    t.driverId === driver?.id && 
+    t.status === 'COMPLETED' && 
+    new Date(t.timestamp || '').setHours(0, 0, 0, 0) === today
+  );
 
   const ridesTodayCount = myCompletedTripsToday.length;
 
@@ -73,7 +67,7 @@ export function HomePage() {
         <div className="flex justify-between items-center relative z-10">
           <div>
             <p className="text-white/70 text-sm font-bold uppercase tracking-widest">Hi,</p>
-            <h1 className="text-white text-3xl font-black mt-1">{driver?.name?.split(' ')[0] || 'Driver'}</h1>
+            <h1 className="text-white text-3xl font-black mt-1">{driver?.name.split(' ')[0]}</h1>
           </div>
           <div className="flex items-center gap-3">
              <button 
