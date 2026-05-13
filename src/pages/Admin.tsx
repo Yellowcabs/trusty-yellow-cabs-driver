@@ -606,9 +606,9 @@ export function AdminPage() {
                                      <span className="text-[10px] bg-neutral-100 text-neutral-500 px-1.5 py-0.5 rounded font-mono font-bold leading-none">{trip.id}</span>
                                   </div>
                                   <div className="flex items-center gap-2 text-neutral-400 text-[10px] font-bold uppercase tracking-widest mt-0.5">
-                                    <span className="truncate max-w-[120px]">{trip.pickup.split(',')[0]}</span>
+                                    <span className="truncate max-w-[120px]">{trip.pickup?.split(',')[0] || 'Unknown'}</span>
                                     <span>→</span>
-                                    <span className="truncate max-w-[120px]">{trip.drop.split(',')[0]}</span>
+                                    <span className="truncate max-w-[120px]">{trip.drop?.split(',')[0] || 'Unknown'}</span>
                                 </div>
                               </div>
                           </div>

@@ -39,6 +39,60 @@ import { Trip, Driver } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { getBaseUrl } from '../lib/config';
 
+const isCapacitor = typeof window !== 'undefined' && (window as any).Capacitor;
+
+async function safeFetch(url: string, options: any = {}): Promise<Response> {
+  if (isCapacitor) {
+    try {
+      const { CapacitorHttp } = await import('@capacitor/core');
+      const method = (options.method || 'GET').toUpperCase();
+      
+      const config: any = {
+        url,
+        headers: options.headers || {},
+      };
+
+      if (!config.headers['Accept']) {
+        config.headers['Accept'] = 'application/json';
+      }
+
+      if (options.body) {
+        if (typeof options.body === 'string') {
+          try {
+            config.data = JSON.parse(options.body);
+            if (!config.headers['Content-Type']) {
+              config.headers['Content-Type'] = 'application/json';
+            }
+          } catch (e) {
+            config.data = options.body;
+          }
+        } else {
+          config.data = options.body;
+        }
+      }
+
+      console.log(`[SafeFetch] ${method} ${url}`);
+      const response = await (CapacitorHttp as any)[method.toLowerCase()](config);
+      
+      return {
+        ok: response.status >= 200 && response.status < 300,
+        status: response.status,
+        json: async () => response.data,
+        text: async () => typeof response.data === 'string' ? response.data : JSON.stringify(response.data),
+        headers: new Headers(response.headers)
+      } as Response;
+    } catch (e: any) {
+      console.error('[SafeFetch] CapacitorHttp Error:', e);
+      // Fallback to fetch only if CapacitorHttp actually failed to even start
+      if (e.message?.includes('found') || e.message?.includes('import')) {
+         return fetch(url, options);
+      }
+      throw e; // Re-throw if it was a network error or something else CapacitorHttp specific
+    }
+  }
+  return fetch(url, options);
+}
+
 /**
  * SUPABASE SQL SCHEMA (Run this in Supabase SQL Editor)
  * 
@@ -148,7 +202,7 @@ export async function fetchTrips(filters?: { status?: Trip['status']; driverId?:
     const url = `${getBaseUrl()}/api/trips${queryStr ? '?' + queryStr : ''}`;
 
     // Try to fetch from backend first
-    const response = await fetch(url);
+    const response = await safeFetch(url);
     if (response.ok) {
       const data = await response.json();
       return data.map((row: any) => ({
@@ -259,7 +313,7 @@ export async function createTripApi(trip: Omit<Trip, 'id' | 'status' | 'timestam
     };
 
     // Try backend first
-    const response = await fetch(`${getBaseUrl()}/api/trips`, {
+    const response = await safeFetch(`${getBaseUrl()}/api/trips`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newTripRow)
@@ -327,7 +381,6 @@ export async function updateTripFareApi(tripId: string, fare: number): Promise<{
 
 export async function updateTripStatus(tripId: string, status: Trip['status'], driverId?: string, extraData?: any): Promise<{ success: boolean; error?: string }> {
   try {
-    if (!isSupabaseConfigured) throw new Error('Supabase not configured');
     const updateData: any = { status, ...extraData };
     if (driverId) updateData.driver_id = driverId;
     if (status === 'PENDING') {
@@ -336,6 +389,16 @@ export async function updateTripStatus(tripId: string, status: Trip['status'], d
     if (status === 'STARTED') updateData.start_time = new Date().toISOString();
     if (status === 'COMPLETED') updateData.end_time = new Date().toISOString();
 
+    // Try backend first
+    const response = await safeFetch(`${getBaseUrl()}/api/trips/${tripId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updateData)
+    });
+
+    if (response.ok) return { success: true };
+
+    if (!isSupabaseConfigured) throw new Error('Supabase not configured');
     const { error } = await supabase
       .from('trips')
       .update(updateData)
@@ -385,7 +448,7 @@ export async function rejectTripApi(tripId: string, driverId: string, currentRej
     
     // Remove any existing rejection entry for this driver (handle both old plain ID and new ID|timestamp)
     const filteredRejections = (currentRejectedBy || []).filter(entry => {
-      const entryId = entry.includes('|') ? entry.split('|')[0] : entry;
+      const entryId = entry && entry.includes('|') ? entry.split('|')[0] : entry;
       return entryId !== driverId;
     });
     
@@ -431,7 +494,7 @@ export async function fetchDrivers(filters?: { isOnline?: boolean; search?: stri
     const url = `${getBaseUrl()}/api/drivers${queryStr ? '?' + queryStr : ''}`;
 
     // Try to fetch from backend first
-    const response = await fetch(url);
+    const response = await safeFetch(url);
     if (response.ok) {
       const data = await response.json();
       return data.map((row: any) => ({
@@ -548,36 +611,85 @@ export async function createDriverApi(driverData: Omit<Driver, 'rating' | 'total
 }
 
 export async function updateDriverOnlineStatus(driverId: string, isOnline: boolean): Promise<boolean> {
+  const url = `${getBaseUrl()}/api/drivers/${driverId}/online`;
+  console.log(`[API] POST (Online Toggle) ${url} | body:`, { isOnline });
   try {
-    // Try backend first
-    const response = await fetch(`${getBaseUrl()}/api/drivers/${driverId}/online`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+    // Try backend first - using POST instead of PATCH for better mobile compatibility
+    const response = await safeFetch(url, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
       body: JSON.stringify({ isOnline })
     });
 
-    if (response.ok) return true;
+    if (response.ok) {
+      const data = await response.json();
+      console.log('[API] Update online status success:', data);
+      return true;
+    }
 
-    // Fallback to client-side Supabase
-    if (!isSupabaseConfigured) return false;
+    const errorText = await response.text();
+    console.warn(`[API] PATCH online status failed (${response.status}):`, errorText.substring(0, 100));
 
-    const { error } = await supabase
-      .from('drivers')
-      .update({ is_online: isOnline })
-      .eq('id', driverId);
+    // Fallback to client-side Supabase if backend fails
+    if (isSupabaseConfigured) {
+      console.log('[API] Falling back to client-side Supabase');
+      const { error } = await supabase
+        .from('drivers')
+        .update({ is_online: isOnline })
+        .eq('id', driverId);
 
-    if (error) throw error;
-    return true;
+      if (!error) {
+        console.log('[API] Client-side fallback success');
+        return true;
+      }
+      console.error('[API] Client-side fallback failed:', error);
+    }
+    
+    return false;
   } catch (e: any) {
-    console.error('Supabase update driver status error:', e.message || e);
+    console.error('[API] updateDriverOnlineStatus exception:', e.message || e);
     return false;
   }
 }
 
 export async function getDriverByLogin(identifier: string, pin: string): Promise<Driver | null> {
   try {
+    // Try backend first
+    const response = await safeFetch(`${getBaseUrl()}/api/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier, pin })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return {
+        id: data.id,
+        name: data.name,
+        phone: data.phone,
+        pin: data.pin,
+        vehicleModel: data.vehicle_model,
+        vehicleNumber: data.vehicle_number,
+        isOnline: data.is_online,
+        rating: Number(data.rating),
+        totalEarnings: Number(data.total_earnings),
+        completedRides: data.completed_rides,
+        avatarUrl: data.avatar_url,
+        isBlocked: data.is_blocked,
+        officeFee: Number(data.office_fee || 0),
+        latitude: data.latitude,
+        longitude: data.longitude,
+        heading: data.heading,
+        lastSeen: data.last_seen,
+        fcmToken: data.fcm_token
+      };
+    }
+
     if (!isSupabaseConfigured) return null;
-    // Try login by ID
+    // Fallback to direct client-side Supabase
     let { data, error } = await supabase
       .from('drivers')
       .select('*')
@@ -628,7 +740,6 @@ export async function getDriverByLogin(identifier: string, pin: string): Promise
 
 export async function updateLocationApi(driverId: string, lat: number, lng: number, heading?: number): Promise<boolean> {
   try {
-    if (!isSupabaseConfigured) return false;
     const updateData: any = { 
       latitude: lat, 
       longitude: lng,
@@ -639,6 +750,16 @@ export async function updateLocationApi(driverId: string, lat: number, lng: numb
       updateData.heading = heading;
     }
 
+    // Try backend first
+    const response = await safeFetch(`${getBaseUrl()}/api/drivers/${driverId}/location`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updateData)
+    });
+
+    if (response.ok) return true;
+
+    if (!isSupabaseConfigured) return false;
     const { error } = await supabase
       .from('drivers')
       .update(updateData)
@@ -659,7 +780,7 @@ export async function updateLocationApi(driverId: string, lat: number, lng: numb
 export async function uploadDriverPhoto(file: File, driverId: string): Promise<string | null> {
   try {
     if (!isSupabaseConfigured) return null;
-    const fileExt = file.name.split('.').pop();
+    const fileExt = file?.name?.split('.').pop() || 'jpg';
     const fileName = `${driverId}-${Math.random()}.${fileExt}`;
     const filePath = `${fileName}`; // Just put in root of bucket or a subfolder
 

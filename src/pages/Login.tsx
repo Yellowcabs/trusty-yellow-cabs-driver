@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Car, Lock, Key, AlertCircle, ChevronRight, Headphones, ShieldCheck } from 'lucide-react';
+import { Car, Lock, Key, AlertCircle, ChevronRight, Headphones, ShieldCheck, Info } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { cn } from '../lib/utils';
 import { fcmService } from '../services/fcmService';
+import { getBaseUrl } from '../lib/config';
 
 export function LoginPage() {
   const [id, setId] = useState('');
@@ -16,6 +17,69 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isAdminRequest = searchParams.get('admin') === 'true';
+  const isNative = typeof window !== 'undefined' && ((window as any).Capacitor || (window as any).webkit?.messageHandlers?.bridge);
+
+  const [debugHealth, setDebugHealth] = useState<'IDLE' | 'CHECKING' | 'OK' | 'FAIL'>('IDLE');
+  const [debugStatus, setDebugStatus] = useState<number | null>(null);
+  const [debugLog, setDebugLog] = useState<string>('');
+
+  const checkHealth = async () => {
+    setDebugHealth('CHECKING');
+    setDebugLog('Starting health check...');
+    const url = `${getBaseUrl()}/api/health`;
+    
+    try {
+      // First try standard fetch
+      setDebugLog(prev => prev + '\nTrying fetch...');
+      const res = await fetch(url, { 
+        method: 'GET',
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      setDebugStatus(res.status);
+      if (res.ok) {
+        setDebugHealth('OK');
+        const data = await res.json();
+        setDebugLog(`Fetch Success: ${JSON.stringify(data)}`);
+        return;
+      } else {
+        setDebugLog(prev => prev + `\nFetch failed ${res.status}`);
+      }
+    } catch (e: any) {
+      setDebugLog(prev => prev + `\nFetch ERROR: ${e.message}`);
+    }
+
+    // If fetch fails, try CapacitorHttp if available
+    try {
+      const isCapacitor = (window as any).Capacitor;
+      if (isCapacitor) {
+        setDebugLog(prev => prev + '\nTrying CapacitorHttp...');
+        const { CapacitorHttp } = await import('@capacitor/core');
+        const response = await CapacitorHttp.get({
+          url,
+          headers: { 'Accept': 'application/json' }
+        });
+        
+        setDebugStatus(response.status);
+        if (response.status >= 200 && response.status < 300) {
+          setDebugHealth('OK');
+          setDebugLog(`CapHttp Success! (Bypassed CORS)`);
+          return;
+        } else {
+          setDebugLog(prev => prev + `\nCapHttp failed ${response.status}`);
+        }
+      }
+    } catch (e: any) {
+      setDebugLog(prev => prev + `\nCapHttp ERROR: ${e.message}`);
+    }
+
+    setDebugHealth('FAIL');
+  };
+
+  const clearCache = () => {
+    localStorage.clear();
+    window.location.reload();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,33 +89,44 @@ export function LoginPage() {
 
     setIsLoading(true);
     setError('');
+    setDebugLog(prev => prev + '\nAttempting LOGIN...');
     
-    const success = await login(id, pin);
-    if (success) {
-      if (isAdminRequest) {
-        if (id !== 'admin') {
-          setError('Invalid Admin Credentials.');
-          setIsLoading(false);
-          return;
+    try {
+      const success = await login(id, pin);
+      setDebugLog(prev => prev + `\nLogin Result: ${success}`);
+      
+      if (success) {
+        if (isAdminRequest) {
+          if (id !== 'admin') {
+            setError('Invalid Admin Credentials.');
+            setIsLoading(false);
+            return;
+          }
+          setDebugLog(prev => prev + '\nNavigating to Admin...');
+          navigate('/admin');
+        } else {
+          if (id === 'admin') {
+            setError('Please use the Admin Portal to login.');
+            setIsLoading(false);
+            return;
+          }
+          setDebugLog(prev => prev + '\nNavigating to Home...');
+          navigate('/');
         }
-        navigate('/admin');
       } else {
-        if (id === 'admin') {
-          setError('Please use the Admin Portal to login.');
-          setIsLoading(false);
-          return;
+        setDebugLog(prev => prev + '\nLogin FAILED');
+        // Check if specifically blocked
+        const { getDriverByLogin } = await import('../services/api');
+        const testDriver = await getDriverByLogin(id, pin);
+        if (testDriver?.isBlocked) {
+          setError('Your account is BLOCKED. Contact Support.');
+        } else {
+          setError('Invalid Driver ID or Password/PIN');
         }
-        navigate('/');
       }
-    } else {
-      // Check if specifically blocked
-      const { getDriverByLogin } = await import('../services/api');
-      const testDriver = await getDriverByLogin(id, pin);
-      if (testDriver?.isBlocked) {
-        setError('Your account is BLOCKED. Contact Support.');
-      } else {
-        setError('Invalid Driver ID or Password/PIN');
-      }
+    } catch (e: any) {
+      setDebugLog(prev => prev + `\nEXCEPTION during login: ${e.message}`);
+      setError(`Login Error: ${e.message}`);
     }
     setIsLoading(false);
   };
@@ -155,6 +230,65 @@ export function LoginPage() {
           Admin manually creates accounts.<br/>
           Contact dispatch for support.
         </p>
+
+        {isNative && (
+          <div className="mt-8 pt-6 border-t border-neutral-100">
+            <div className="flex items-center gap-2 text-[10px] text-neutral-400 uppercase tracking-widest font-black mb-3">
+              <Info size={12} className="text-primary" />
+              <span>Native Debug Info</span>
+            </div>
+            <div className="p-4 bg-white rounded-2xl border-2 border-neutral-100 flex flex-col gap-2 premium-shadow-sm">
+              <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-tight">
+                <span className="text-neutral-400">Environment:</span>
+                <span className="text-neutral-900 bg-neutral-100 px-2 py-0.5 rounded-full">Capacitor APK</span>
+              </div>
+              <div className="flex flex-col gap-1 text-[10px] font-black">
+                <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-tight mb-1">
+                  <span className="text-neutral-400">App Origin:</span>
+                  <span className="text-neutral-900 select-all">{window.location.origin}</span>
+                </div>
+                <span className="text-neutral-400 uppercase tracking-tight">Backend Endpoint:</span>
+                <span className="text-primary break-all bg-primary/5 p-2 rounded-xl border border-primary/10 select-all mb-2">
+                  {getBaseUrl() || 'Direct Database Access'}
+                </span>
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <button 
+                    type="button"
+                    onClick={checkHealth}
+                    className="flex-1 bg-neutral-900 text-white py-2 rounded-lg text-[9px] uppercase tracking-widest font-black active:scale-95 transition-all"
+                  >
+                    Test Connection
+                  </button>
+                  <div className={cn(
+                    "px-3 py-2 rounded-lg text-[9px] font-black uppercase flex-1 text-center",
+                    debugHealth === 'OK' ? "bg-emerald-500 text-white" : 
+                    debugHealth === 'FAIL' ? "bg-red-500 text-white" : 
+                    debugHealth === 'CHECKING' ? "bg-amber-500 text-white animate-pulse" : "bg-neutral-100 text-neutral-400"
+                  )}>
+                    {debugHealth === 'IDLE' ? 'READY' : debugHealth} {debugStatus && `(${debugStatus})`}
+                  </div>
+                </div>
+                {debugHealth === 'FAIL' && (
+                  <div className="text-[8px] text-red-500 font-bold bg-red-50 p-2 rounded-lg border border-red-100 break-all">
+                    {debugLog}
+                  </div>
+                )}
+                {debugHealth === 'OK' && (
+                  <div className="text-[8px] text-emerald-500 font-bold bg-emerald-50 p-2 rounded-lg border border-emerald-100 break-all">
+                    {debugLog}
+                  </div>
+                )}
+                <button 
+                  type="button"
+                  onClick={clearCache}
+                  className="w-full mt-2 border-2 border-dashed border-neutral-100 text-neutral-400 py-2 rounded-lg text-[9px] uppercase tracking-widest font-black active:scale-95 transition-all text-center"
+                >
+                  Reset App & Clear Cache
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <footer className="mt-auto flex justify-center gap-6 text-neutral-400 font-bold text-xs">
