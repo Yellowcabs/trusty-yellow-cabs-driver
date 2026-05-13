@@ -60,10 +60,12 @@ async function safeFetch(url: string, options: any = {}): Promise<Response> {
         headers: {
           ...options.headers,
           'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest'
+          'X-Requested-With': 'XMLHttpRequest',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
         },
-        connectTimeout: 10000,
-        readTimeout: 10000
+        connectTimeout: 15000,
+        readTimeout: 15000
       };
 
       if (options.body) {

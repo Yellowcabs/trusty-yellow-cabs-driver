@@ -81,19 +81,16 @@ export function LocationTracker() {
           if (!Geolocation) throw new Error('Geolocation plugin not found');
 
           console.log('[Geo] Requesting perms...');
-          let perms = await Geolocation.checkPermissions().catch(() => ({ location: 'prompt' }));
+          const perms = await Geolocation.checkPermissions().catch(() => ({ location: 'prompt' }));
           
           if (perms.location !== 'granted') {
-            perms = await Geolocation.requestPermissions().catch(e => {
+            const req = await Geolocation.requestPermissions().catch(e => {
               console.warn('[Geo] Permission request failed', e);
               return { location: 'denied' };
             }) as any;
-          }
-          
-          if (perms.location !== 'granted') {
-            console.warn('[Geo] No permission, falling back to web geo');
-            fallbackToWeb();
-            return;
+            if (req.location !== 'granted') {
+               console.warn('[Geo] Permission still denied after request');
+            }
           }
 
           console.log('[Geo] Starting watch...');

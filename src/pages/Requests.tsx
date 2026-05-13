@@ -20,16 +20,31 @@ export function RequestsPage() {
     );
   }
 
-  const requestPermission = () => {
+  const requestPermission = async () => {
     const isCapacitor = (window as any).Capacitor;
     
     // Unlock audio first
     fcmService.unlockAudio();
 
     if (isCapacitor) {
-      if (driver && driver.id !== 'admin') {
-        fcmService.requestPermission(driver.id);
-        setPermission('granted');
+      try {
+        const { Geolocation } = await import('@capacitor/geolocation');
+        console.log('[Perms] Triggering Location + Push...');
+        
+        // Android "Allow all the time" often requires multiple prompts
+        // 1. Request foreground first
+        const locPerms = await Geolocation.requestPermissions();
+        console.log('[Perms] Foreground Status:', locPerms.location);
+        
+        // 2. Some versions need a specific background check or prompt
+        // If we really want "Always", we might need to tell the user to go to settings if not automatically prompted
+        
+        if (driver && driver.id !== 'admin') {
+          await fcmService.requestPermission(driver.id);
+          setPermission('granted');
+        }
+      } catch (e) {
+        console.error('[Perms] Capacitor request failed:', e);
       }
     } else if (typeof Notification !== 'undefined') {
       Notification.requestPermission().then((res) => {

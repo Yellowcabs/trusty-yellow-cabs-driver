@@ -347,6 +347,9 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     setLoadingTripIds(prev => new Set(prev).add(tripId));
     try {
       console.log(`[TripAction] Accepting trip: ${tripId}`);
+      const { fcmService } = await import('../services/fcmService');
+      fcmService.stopTripSound();
+      
       const result = await updateTripStatus(tripId, 'ACCEPTED', driver.id);
       if (result.success) {
         await refreshTrips();
@@ -408,6 +411,9 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       if (!trip) return;
       
       console.log(`[TripAction] Rejecting trip: ${tripId}`);
+      const { fcmService } = await import('../services/fcmService');
+      fcmService.stopTripSound();
+
       const result = await rejectTripApi(tripId, driver.id, trip.rejectedBy || []);
       if (result.success) {
         setPendingTrips(prev => prev.filter(t => t.id !== tripId));

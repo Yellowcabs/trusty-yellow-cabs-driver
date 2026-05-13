@@ -207,15 +207,19 @@ class FCMService {
   }
 
   stopTripSound() {
-    if (this.audio && this.isSoundPlaying) {
-      this.audio.pause();
-      this.audio.currentTime = 0;
-      this.isSoundPlaying = false;
-      
-      if (navigator.vibrate) {
-        navigator.vibrate(0);
+    this.isSoundPlaying = false;
+    if (this.audio) {
+      try {
+        this.audio.pause();
+        this.audio.currentTime = 0;
+      } catch (e) {
+        console.warn('[FCM] Sound stop error:', e);
       }
     }
+    if (navigator.vibrate) {
+      navigator.vibrate(0);
+    }
+    console.log('[FCM] Trip sound stopped');
   }
 }
 
