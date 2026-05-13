@@ -7,16 +7,22 @@ const config: CapacitorConfig = {
   server: {
     androidScheme: 'https',
     allowNavigation: [
-      'ais-dev-uqgore4bofclvpax7gqjqi-242082848033.asia-southeast1.run.app',
-      'ais-pre-uqgore4bofclvpax7gqjqi-242082848033.asia-southeast1.run.app'
+      '*'
     ],
     cleartext: true
   },
   android: {
-    allowMixedContent: true
+    allowMixedContent: true,
+    buildOptions: {
+      keystorePath: undefined,
+      keystoreAlias: undefined,
+    }
   },
   plugins: {
     CapacitorHttp: {
+      enabled: true,
+    },
+    CapacitorCookies: {
       enabled: true,
     },
   },

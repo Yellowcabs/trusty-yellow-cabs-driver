@@ -7,8 +7,11 @@ class FCMService {
   private isSoundPlaying = false;
   private isAudioUnlocked = false;
 
+  private isCapacitor = false;
+
   constructor() {
     if (typeof window !== 'undefined') {
+      this.isCapacitor = !!((window as any).Capacitor || (window as any).webkit?.messageHandlers?.bridge || navigator.userAgent.includes('Capacitor'));
       this.audio = new Audio('/trip.mp3');
       this.audio.loop = true;
     }
@@ -33,81 +36,62 @@ class FCMService {
   async requestPermission(driverId: string) {
     if (typeof window === 'undefined') return;
 
-    const isCapacitor = (window as any).Capacitor || (window as any).webkit?.messageHandlers?.bridge || navigator.userAgent.includes('Capacitor');
+    if (this.isCapacitor) {
+      console.log('[FCM] Starting Capacitor Push Setup for Driver:', driverId);
+      try {
+        const { PushNotifications } = await import('@capacitor/push-notifications');
+        
+        let permStatus = await PushNotifications.checkPermissions();
+        console.log('[FCM] Current Permission Status:', permStatus.receive);
 
-    if (isCapacitor) {
-      // Run this in background to avoid blocking UI threads
-      (async () => {
-        try {
-          console.log('[FCM] Starting Capacitor Push Setup...');
-          const { PushNotifications } = await import('@capacitor/push-notifications');
+        if (permStatus.receive === 'prompt') {
+          permStatus = await PushNotifications.requestPermissions();
+        }
+
+        if (permStatus.receive === 'granted') {
+          await PushNotifications.register();
           
-          if (!PushNotifications) {
-            console.warn('[FCM] PushNotifications plugin not found');
-            return;
-          }
-
-          const permStatus = await PushNotifications.checkPermissions();
-          console.log('[FCM] Current Perms:', permStatus.receive);
-
-          if (permStatus.receive === 'prompt') {
-            const reqStatus = await PushNotifications.requestPermissions();
-            if (reqStatus.receive !== 'granted') {
-               console.log('[FCM] Permission denied by user');
-               return;
-            }
-          } else if (permStatus.receive === 'denied') {
-            console.log('[FCM] Permission already denied, not re-prompting here');
-            return;
-          }
-
-          // At this point we likely have granted (or it was already granted)
-          
-          // Create channel for Android 8+
-          if ((window as any).Capacitor.getPlatform() === 'android') {
-            await PushNotifications.createChannel({
-              id: 'trips',
-              name: 'Trip Requests',
-              description: 'Alerts for nearby trip requests',
-              importance: 5,
-              visibility: 1,
-              vibration: true,
-              sound: 'trip.mp3'
-            }).catch(e => console.warn('[FCM] Channel creation failed:', e));
-          }
-
-          // Register with Apple / Google for tokens
-          await PushNotifications.register().catch(e => console.error('[FCM] Register Error:', e));
-          
-          try {
-            const { LocalNotifications } = await import('@capacitor/local-notifications');
-            await LocalNotifications.requestPermissions().catch(e => console.warn('[FCM] Local Notification Perms Fail:', e));
-          } catch (e) {
-            console.warn('[FCM] LocalNotifications import fail');
-          }
-
-          // On Capacitor, the token is received via listeners
+          // Setup listeners BEFORE registration to catch initial token
           PushNotifications.addListener('registration', async (token) => {
-            console.log('[FCM] Capacitor Push Token:', token.value);
-            if (token.value) {
-              await updateFcmTokenApi(driverId, token.value).catch(e => console.error('[FCM] Failed to sync token to backend:', e));
-            }
+            console.log('[FCM] Capacitor Token:', token.value);
+            await updateFcmTokenApi(driverId, token.value).catch(e => console.error('[FCM] Sync fail:', e));
+          });
+          
+          PushNotifications.addListener('registrationError', (error) => {
+            console.error('[FCM] Registration Error:', error);
           });
 
-          PushNotifications.addListener('registrationError', (error) => {
-            console.error('[FCM] Capacitor Push Registration Error:', JSON.stringify(error));
-          });
+          // Create the required notification channel for Android
+          if ((window as any).Capacitor.getPlatform() === 'android') {
+            try {
+              // Both PushNotifications and LocalNotifications have createChannel, but we follow standard pattern
+              await PushNotifications.createChannel({
+                id: 'trips',
+                name: 'New Trip Alerts',
+                description: 'Alerts for nearby trip requests',
+                importance: 5,
+                visibility: 1,
+                vibration: true,
+                sound: 'trip.mp3'
+              });
+              console.log('[FCM] Android Channel "trips" verified');
+            } catch (e) {
+              console.warn('[FCM] Channel creation failed:', e);
+            }
+          }
 
           PushNotifications.addListener('pushNotificationReceived', (notification) => {
-             console.log('[FCM] Push Notification Received:', notification);
-             if (notification.data?.type === 'NEW_TRIP') {
-               this.startTripSound();
-             }
+            console.log('[FCM] Push Notification Received:', notification);
+            if (notification.data?.type === 'NEW_TRIP' || notification.title?.includes('New Trip')) {
+              this.startTripSound();
+            }
           });
-        } catch (e) {
-          console.error('[FCM] Capacitor Push Setup hidden failure:', e);
+        } else {
+          console.error('[FCM] Permission DENIED in APK');
         }
-      })();
+      } catch (err) {
+        console.error('[FCM] Capacitor Setup Exception:', err);
+      }
       return null;
     }
 
