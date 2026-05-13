@@ -90,6 +90,8 @@ export function LocationTracker() {
             }) as any;
             if (req.location !== 'granted') {
                console.warn('[Geo] Permission still denied after request');
+               // On Android, "Allow all the time" needs manual user action if not prompted.
+               // We don't block here, we let the watch attempt run as foreground if allowed.
             }
           }
 

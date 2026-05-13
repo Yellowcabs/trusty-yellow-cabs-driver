@@ -9,7 +9,7 @@ import { fcmService } from '../services/fcmService';
 export function RequestsPage() {
   const { driver } = useAuth();
   const { pendingTrips, acceptTrip, rejectTrip, loadingTripIds } = useTrips();
-  const [permission, setPermission] = React.useState(typeof Notification !== 'undefined' ? Notification.permission : 'denied');
+  const [permission, setPermission] = React.useState<string>(typeof Notification !== 'undefined' ? Notification.permission : 'denied');
 
   if (driver?.isBlocked) {
     return (
@@ -31,20 +31,30 @@ export function RequestsPage() {
         const { Geolocation } = await import('@capacitor/geolocation');
         console.log('[Perms] Triggering Location + Push...');
         
-        // Android "Allow all the time" often requires multiple prompts
-        // 1. Request foreground first
+        // 1. Request Foreground Location
         const locPerms = await Geolocation.requestPermissions();
         console.log('[Perms] Foreground Status:', locPerms.location);
         
-        // 2. Some versions need a specific background check or prompt
-        // If we really want "Always", we might need to tell the user to go to settings if not automatically prompted
-        
+        if (locPerms.location === 'granted') {
+           // On Android, if we want "Allow all the time", we might need to prompt specifically for background
+           // Note: Capacitor 5+ handles this via specific requestPermissions calls if configured
+           // but often requires manual user action in OS settings.
+           console.log('[Perms] Foreground granted. Background usage depends on OS settings.');
+        }
+
+        // 2. Request Push Notifications
         if (driver && driver.id !== 'admin') {
+          console.log('[Perms] Initializing Push Registration...');
+          // fcmService.requestPermission handles its own try/catch and listeners
           await fcmService.requestPermission(driver.id);
-          setPermission('granted');
+          
+          // Re-check permission state to update local UI
+          const { PushNotifications } = await import('@capacitor/push-notifications');
+          const pushStatus = await PushNotifications.checkPermissions();
+          setPermission(pushStatus.receive);
         }
       } catch (e) {
-        console.error('[Perms] Capacitor request failed:', e);
+        console.error('[Perms] Native permission request failed:', e);
       }
     } else if (typeof Notification !== 'undefined') {
       Notification.requestPermission().then((res) => {

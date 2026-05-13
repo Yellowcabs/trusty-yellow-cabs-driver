@@ -41,6 +41,38 @@ class FCMService {
       try {
         const { PushNotifications } = await import('@capacitor/push-notifications');
         
+        if (!PushNotifications) {
+          console.warn('[FCM] PushNotifications plugin not found');
+          return null;
+        }
+
+        // 1. Add listeners FIRST before registration or permission requests
+        // This ensures the JS bridge is ready and won't miss events
+        try {
+          await PushNotifications.removeAllListeners();
+          
+          PushNotifications.addListener('registration', async (token) => {
+            console.log('[FCM] Capacitor Token:', token.value);
+            if (token.value) {
+              await updateFcmTokenApi(driverId, token.value).catch(e => console.error('[FCM] Sync fail:', e));
+            }
+          });
+          
+          PushNotifications.addListener('registrationError', (error) => {
+            console.error('[FCM] Registration Error:', error);
+          });
+
+          PushNotifications.addListener('pushNotificationReceived', (notification) => {
+            console.log('[FCM] Push Notification Received:', notification);
+            if (notification.data?.type === 'NEW_TRIP' || notification.title?.includes('New Trip')) {
+              this.startTripSound();
+            }
+          });
+        } catch (listenerError) {
+          console.warn('[FCM] Listener setup partial failure:', listenerError);
+        }
+
+        // 2. Check and Request Permissions
         let permStatus = await PushNotifications.checkPermissions();
         console.log('[FCM] Current Permission Status:', permStatus.receive);
 
@@ -48,23 +80,13 @@ class FCMService {
           permStatus = await PushNotifications.requestPermissions();
         }
 
+        // 3. Register ONLY if granted
         if (permStatus.receive === 'granted') {
-          await PushNotifications.register();
+          await PushNotifications.register().catch(e => console.error('[FCM] Register Fail:', e));
           
-          // Setup listeners BEFORE registration to catch initial token
-          PushNotifications.addListener('registration', async (token) => {
-            console.log('[FCM] Capacitor Token:', token.value);
-            await updateFcmTokenApi(driverId, token.value).catch(e => console.error('[FCM] Sync fail:', e));
-          });
-          
-          PushNotifications.addListener('registrationError', (error) => {
-            console.error('[FCM] Registration Error:', error);
-          });
-
-          // Create the required notification channel for Android
+          // 4. Create Channel (Android Only)
           if ((window as any).Capacitor.getPlatform() === 'android') {
             try {
-              // Both PushNotifications and LocalNotifications have createChannel, but we follow standard pattern
               await PushNotifications.createChannel({
                 id: 'trips',
                 name: 'New Trip Alerts',
@@ -75,22 +97,15 @@ class FCMService {
                 sound: 'trip.mp3'
               });
               console.log('[FCM] Android Channel "trips" verified');
-            } catch (e) {
-              console.warn('[FCM] Channel creation failed:', e);
+            } catch (channelError) {
+              console.warn('[FCM] Channel creation failed:', channelError);
             }
           }
-
-          PushNotifications.addListener('pushNotificationReceived', (notification) => {
-            console.log('[FCM] Push Notification Received:', notification);
-            if (notification.data?.type === 'NEW_TRIP' || notification.title?.includes('New Trip')) {
-              this.startTripSound();
-            }
-          });
         } else {
-          console.error('[FCM] Permission DENIED in APK');
+          console.warn('[FCM] Permission NOT granted. Push functionality will be disabled.');
         }
       } catch (err) {
-        console.error('[FCM] Capacitor Setup Exception:', err);
+        console.error('[FCM] Critical Capacitor Setup Exception (Prevention of crash):', err);
       }
       return null;
     }

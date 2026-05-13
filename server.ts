@@ -50,18 +50,14 @@ app.use((req, res, next) => {
   const userAgent = req.get('user-agent') || 'no-agent';
   
   // Robust mobile origin detection
-  const isMobileApp = origin.includes('localhost') || origin.startsWith('capacitor://') || origin.startsWith('http://localhost');
+  const isMobileApp = origin.includes('localhost') || origin.startsWith('capacitor://') || origin.startsWith('http://localhost') || origin.startsWith('file://');
   
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   
-  if (isMobileApp) {
-    res.header('Access-Control-Allow-Origin', origin);
-  } else {
-    res.header('Access-Control-Allow-Origin', origin);
-  }
-  
+  // Set CORS headers manually to ensure reliability across all platforms
+  res.header('Access-Control-Allow-Origin', origin === 'null' ? '*' : origin);
   res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, X-Requested-With, Origin');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, X-Requested-With, Origin, Cache-Control, Pragma');
   res.header('Access-Control-Allow-Credentials', 'true');
 
   if (req.method === 'OPTIONS') {
