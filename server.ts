@@ -46,18 +46,19 @@ app.use(express.json());
 
 // Detailed Request logger
 app.use((req, res, next) => {
-  const origin = req.get('origin') || 'no-origin';
+  const origin = req.get('origin') || '*';
   const userAgent = req.get('user-agent') || 'no-agent';
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   console.log(`[Headers] Origin: ${origin}`);
   console.log(`[Headers] UA: ${userAgent}`);
-  console.log(`[Headers] Host: ${req.get('host')}`);
   
+  // Allow any origin for mobile/native apps
+  res.header('Access-Control-Allow-Origin', origin);
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, X-Requested-With, Origin');
+  res.header('Access-Control-Allow-Credentials', 'true');
+
   if (req.method === 'OPTIONS') {
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, X-Requested-With, Origin');
-    res.header('Access-Control-Allow-Credentials', 'true');
     return res.status(200).end();
   }
   next();

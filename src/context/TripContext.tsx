@@ -29,9 +29,10 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   const lastTripIdRef = useRef<string | null>(null);
 
   const showNotification = useCallback((trip: any) => {
+    if (!trip) return;
     const title = 'New Trip Request! 🚕';
     const options = {
-      body: `From: ${trip.pickup?.split(',')[0] || trip.pickup} (₹${trip.fare})\nTo: ${trip.drop?.split(',')[0] || trip.drop}`,
+      body: `From: ${trip.pickup?.split(',')[0] || trip.pickup || 'Unknown'} (₹${trip.fare || 0})\nTo: ${trip.drop?.split(',')[0] || trip.drop || 'Unknown'}`,
       icon: 'https://cdn-icons-png.flaticon.com/512/3063/3063822.png',
       badge: 'https://cdn-icons-png.flaticon.com/512/3063/3063822.png',
       tag: 'new-trip',
@@ -62,6 +63,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updatePendingTrips = useCallback((trips: Trip[]) => {
+    if (!Array.isArray(trips)) return;
     if (!driver?.isOnline) {
       setPendingTrips([]);
       lastTripIdRef.current = null;

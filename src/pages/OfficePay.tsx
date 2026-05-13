@@ -19,7 +19,7 @@ export function OfficePayPage() {
   const upiUrl = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(name)}&am=${fee}&cu=INR&tn=Office%20Fee`;
 
   const whatsappUrl = `https://wa.me/${supportPhone}?text=${encodeURIComponent(
-    `Hi Admin, I have paid ₹${fee}. Driver ID: ${driver?.id?.toUpperCase()}`
+    `Hi Admin, I have paid ₹${fee}. Driver ID: ${driver?.id?.toUpperCase() || 'UNKNOWN'}`
   )}`;
 
   return (
