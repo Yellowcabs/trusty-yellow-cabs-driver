@@ -353,10 +353,10 @@ async function setupApp() {
     });
   }
 
-  // Only listen if not on Vercel
+  // Final listen binding optimized for production
   if (!process.env.VERCEL) {
     app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
+      console.log(`[Production] Server listening on 0.0.0.0:${PORT}`);
     });
   }
 }

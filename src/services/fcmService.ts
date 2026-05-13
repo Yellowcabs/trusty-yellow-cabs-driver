@@ -34,7 +34,7 @@ class FCMService {
   }
 
   async requestPermission(driverId: string) {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !driverId || driverId === 'admin') return;
 
     if (this.isCapacitor) {
       console.log('[FCM] Starting Capacitor Push Setup for Driver:', driverId);
@@ -46,15 +46,14 @@ class FCMService {
           return null;
         }
 
-        // 1. Add listeners FIRST before registration or permission requests
-        // This ensures the JS bridge is ready and won't miss events
+        // 1. Add listeners FIRST inside a safe block
         try {
-          await PushNotifications.removeAllListeners();
+          await PushNotifications.removeAllListeners().catch(() => {});
           
           PushNotifications.addListener('registration', async (token) => {
-            console.log('[FCM] Capacitor Token:', token.value);
+            console.log('[FCM] Token acquired:', token.value);
             if (token.value) {
-              await updateFcmTokenApi(driverId, token.value).catch(e => console.error('[FCM] Sync fail:', e));
+              await updateFcmTokenApi(driverId, token.value).catch(e => console.error('[FCM] Token sync error:', e));
             }
           });
           
@@ -63,7 +62,7 @@ class FCMService {
           });
 
           PushNotifications.addListener('pushNotificationReceived', (notification) => {
-            console.log('[FCM] Push Notification Received:', notification);
+            console.log('[FCM] Notification received:', notification);
             if (notification.data?.type === 'NEW_TRIP' || notification.title?.includes('New Trip')) {
               this.startTripSound();
             }
@@ -72,37 +71,40 @@ class FCMService {
           console.warn('[FCM] Listener setup partial failure:', listenerError);
         }
 
-        // 2. Check and Request Permissions
-        let permStatus = await PushNotifications.checkPermissions();
-        console.log('[FCM] Current Permission Status:', permStatus.receive);
+        // 2. Request Permissions
+        let permStatus = await PushNotifications.requestPermissions().catch(e => {
+          console.error('[FCM] Permission request CRASH PREVENTED:', e);
+          return { receive: 'denied' };
+        });
 
-        if (permStatus.receive === 'prompt') {
-          permStatus = await PushNotifications.requestPermissions();
-        }
+        console.log('[FCM] Permission Result:', permStatus.receive);
 
         // 3. Register ONLY if granted
         if (permStatus.receive === 'granted') {
-          await PushNotifications.register().catch(e => console.error('[FCM] Register Fail:', e));
-          
-          // 4. Create Channel (Android Only)
-          if ((window as any).Capacitor.getPlatform() === 'android') {
+          // Delay registration slightly to ensure native bridge stability
+          setTimeout(async () => {
             try {
-              await PushNotifications.createChannel({
-                id: 'trips',
-                name: 'New Trip Alerts',
-                description: 'Alerts for nearby trip requests',
-                importance: 5,
-                visibility: 1,
-                vibration: true,
-                sound: 'trip.mp3'
-              });
-              console.log('[FCM] Android Channel "trips" verified');
-            } catch (channelError) {
-              console.warn('[FCM] Channel creation failed:', channelError);
+              console.log('[FCM] Calling register()...');
+              await PushNotifications.register();
+              
+              // 4. Create Channel (Android Only)
+              if ((window as any).Capacitor?.getPlatform() === 'android') {
+                await PushNotifications.createChannel({
+                  id: 'trips',
+                  name: 'New Trip Alerts',
+                  description: 'Alerts for nearby trip requests',
+                  importance: 5,
+                  visibility: 1,
+                  vibration: true,
+                  sound: 'trip.mp3'
+                }).catch(e => console.warn('[FCM] Channel creation fail:', e));
+              }
+            } catch (regError) {
+              console.error('[FCM] Push Registration crashed/failed (Caught):', regError);
             }
-          }
+          }, 1500);
         } else {
-          console.warn('[FCM] Permission NOT granted. Push functionality will be disabled.');
+          console.warn('[FCM] Push permission denied by user or OS');
         }
       } catch (err) {
         console.error('[FCM] Critical Capacitor Setup Exception (Prevention of crash):', err);

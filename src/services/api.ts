@@ -49,29 +49,29 @@ const isCapacitor = getCapacitorStatus();
 
 async function safeFetch(url: string, options: any = {}): Promise<Response> {
   const currentIsCapacitor = getCapacitorStatus();
+  const method = (options.method || 'GET').toUpperCase();
   
-  if (currentIsCapacitor) {
+  if (currentIsCapacitor && url.startsWith('http')) {
     try {
       const { CapacitorHttp } = await import('@capacitor/core');
-      const method = (options.method || 'GET').toUpperCase();
       
       const config: any = {
         url,
+        method,
         headers: {
           ...options.headers,
           'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache'
         },
-        connectTimeout: 15000,
-        readTimeout: 15000
+        connectTimeout: 20000,
+        readTimeout: 20000
       };
 
       if (options.body) {
         if (typeof options.body === 'string') {
           try {
-            // CapacitorHttp prefers objects for application/json
+            // CapacitorHttp prefers objects for application/json bodies
             const parsed = JSON.parse(options.body);
             config.data = parsed;
             if (!config.headers['Content-Type']) {
@@ -85,8 +85,8 @@ async function safeFetch(url: string, options: any = {}): Promise<Response> {
         }
       }
 
-      console.log(`[SafeFetch] ${method} ${url}`);
-      const response = await (CapacitorHttp as any)[method.toLowerCase()](config);
+      console.log(`[SafeFetch] ${method} ${url} (CapacitorHttp)`);
+      const response = await (CapacitorHttp as any).request(config);
       
       return {
         ok: response.status >= 200 && response.status < 300,
@@ -96,23 +96,13 @@ async function safeFetch(url: string, options: any = {}): Promise<Response> {
         headers: new Headers(response.headers as any)
       } as Response;
     } catch (e: any) {
-      console.error('[SafeFetch] CapacitorHttp Error:', e);
-      // Fallback to fetch only if CapacitorHttp actually failed or is missing
-      try {
-         return await fetch(url, options);
-      } catch (fetchErr) {
-         console.error('[SafeFetch] BOTH failed', fetchErr);
-         // Return a mock failed response instead of throwing to prevent app crash
-         return {
-           ok: false,
-           status: 0,
-           json: async () => ({ error: 'Network failure' }),
-           text: async () => 'Network failure',
-           headers: new Headers()
-         } as Response;
-      }
+      console.error('[SafeFetch] CapacitorHttp error, falling back to fetch:', e);
+      // Fallback below
     }
   }
+
+  // Debug fetch in browser
+  console.log(`[SafeFetch] ${method} ${url} (Native Fetch)`);
   return fetch(url, options);
 }
 

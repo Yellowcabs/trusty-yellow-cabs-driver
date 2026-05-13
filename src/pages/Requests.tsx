@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Info, BellRing } from 'lucide-react';
+import { Search, MapPin, Navigation, Info, BellRing } from 'lucide-react';
 import { useTrips } from '../context/TripContext';
 import { useAuth } from '../context/AuthContext';
 import { TripCard } from '../components/TripCard';
@@ -8,271 +8,136 @@ import { fcmService } from '../services/fcmService';
 
 export function RequestsPage() {
   const { driver } = useAuth();
-
-  const {
-    pendingTrips,
-    acceptTrip,
-    rejectTrip,
-    loadingTripIds,
-  } = useTrips();
-
-  const [permission, setPermission] =
-    React.useState<string>(
-      typeof Notification !== 'undefined'
-        ? Notification.permission
-        : 'denied'
-    );
+  const { pendingTrips, acceptTrip, rejectTrip, loadingTripIds } = useTrips();
+  const [permission, setPermission] = React.useState<string>(typeof Notification !== 'undefined' ? Notification.permission : 'denied');
 
   if (driver?.isBlocked) {
     return (
       <div className="min-h-screen bg-red-600 flex flex-col items-center justify-center p-8 text-center text-white">
-        <h2 className="text-3xl font-black mb-2">
-          ACCESS DENIED
-        </h2>
-
-        <p className="text-white/80 font-medium">
-          Your account is blocked.
-        </p>
+        <h2 className="text-3xl font-black mb-2">ACCESS DENIED</h2>
+        <p className="text-white/80 font-medium">Your account is blocked.</p>
       </div>
     );
   }
 
-  // SAFE ANDROID APK PERMISSION FLOW
   const requestPermission = async () => {
-    try {
-      const isCapacitor =
-        typeof window !== 'undefined' &&
-        (window as any).Capacitor;
+    const isCapacitor = (window as any).Capacitor;
+    
+    // Unlock audio first
+    fcmService.unlockAudio();
 
-      // Unlock audio safely
+    if (isCapacitor) {
       try {
-        fcmService.unlockAudio();
+        const { Geolocation } = await import('@capacitor/geolocation');
+        console.log('[Perms] Triggering Location + Push...');
+        
+        // 1. Request Foreground Location
+        const locPerms = await Geolocation.requestPermissions();
+        console.log('[Perms] Foreground Status:', locPerms.location);
+        
+        if (locPerms.location === 'granted') {
+           // On Android, if we want "Allow all the time", we might need to prompt specifically for background
+           // Note: Capacitor 5+ handles this via specific requestPermissions calls if configured
+           // but often requires manual user action in OS settings.
+           console.log('[Perms] Foreground granted. Background usage depends on OS settings.');
+        }
+
+        // 2. Request Push Notifications
+        if (driver && driver.id !== 'admin') {
+          console.log('[Perms] Initializing Push Registration...');
+          // fcmService.requestPermission handles its own try/catch and listeners
+          await fcmService.requestPermission(driver.id);
+          
+          // Re-check permission state to update local UI
+          const { PushNotifications } = await import('@capacitor/push-notifications');
+          const pushStatus = await PushNotifications.checkPermissions();
+          setPermission(pushStatus.receive);
+        }
       } catch (e) {
-        console.log('Audio unlock failed', e);
+        console.error('[Perms] Native permission request failed:', e);
       }
-
-      // WEB FLOW
-      if (!isCapacitor) {
-        if (typeof Notification !== 'undefined') {
-          const result =
-            await Notification.requestPermission();
-
-          setPermission(result);
-
-          if (
-            result === 'granted' &&
-            driver &&
-            driver.id !== 'admin'
-          ) {
-            try {
-              await fcmService.requestPermission(
-                driver.id
-              );
-            } catch (e) {
-              console.log('FCM Web Error', e);
-            }
-          }
+    } else if (typeof Notification !== 'undefined') {
+      Notification.requestPermission().then((res) => {
+        setPermission(res);
+        if (res === 'granted' && driver && driver.id !== 'admin') {
+          fcmService.requestPermission(driver.id);
         }
-
-        return;
-      }
-
-      // ANDROID APK FLOW
-      try {
-        const { PushNotifications } = await import(
-          '@capacitor/push-notifications'
-        );
-
-        // STEP 1
-        let permStatus =
-          await PushNotifications.checkPermissions();
-
-        // STEP 2
-        if (permStatus.receive !== 'granted') {
-          permStatus =
-            await PushNotifications.requestPermissions();
-        }
-
-        console.log(
-          '[Push Permission]',
-          permStatus.receive
-        );
-
-        setPermission(permStatus.receive);
-
-        // STEP 3
-        if (permStatus.receive !== 'granted') {
-          console.log('Push permission denied');
-          return;
-        }
-
-        // STEP 4
-        try {
-          if (
-            driver &&
-            driver.id !== 'admin'
-          ) {
-            await fcmService.requestPermission(
-              driver.id
-            );
-          }
-        } catch (e) {
-          console.log(
-            'FCM Registration Error',
-            e
-          );
-        }
-
-        // STEP 5
-        try {
-          const { Geolocation } = await import(
-            '@capacitor/geolocation'
-          );
-
-          const geoPerms =
-            await Geolocation.requestPermissions();
-
-          console.log(
-            '[Location Permission]',
-            geoPerms
-          );
-        } catch (e) {
-          console.log(
-            'Location Permission Error',
-            e
-          );
-        }
-
-      } catch (e) {
-        console.log(
-          'Native Permission Error',
-          e
-        );
-      }
-
-    } catch (error) {
-      console.log(
-        'Permission Crash Prevented',
-        error
-      );
+      });
     }
   };
 
   return (
     <div className="pb-32 page-enter-active">
-
       <header className="px-6 pt-12 pb-6 flex justify-between items-end">
-
         <div>
-          <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">
-            Near You
-          </p>
-
-          <h1 className="text-3xl font-black text-neutral-900">
-            Trip Requests
-          </h1>
+          <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">Near You</p>
+          <h1 className="text-3xl font-black text-neutral-900">Trip Requests</h1>
         </div>
+      <div className="flex flex-col items-end gap-3">
 
-        <div className="flex flex-col items-end gap-3">
+  {permission !== "granted" && (
+    <button
+      onClick={requestPermission}
+      className="flex items-center gap-2 bg-white/90 backdrop-blur-md text-amber-600 px-4 py-2 rounded-2xl shadow-sm border border-amber-100 text-[11px] font-semibold active:scale-95 transition"
+    >
+      <BellRing size={16} className="text-amber-500" />
+      Enable Alerts
+    </button>
+  )}
 
-          {permission !== 'granted' && (
-            <button
-              onClick={requestPermission}
-              className="flex items-center gap-2 bg-white/90 backdrop-blur-md text-amber-600 px-4 py-2 rounded-2xl shadow-sm border border-amber-100 text-[11px] font-semibold active:scale-95 transition"
-            >
-              <BellRing
-                size={16}
-                className="text-amber-500"
-              />
-
-              Enable Alerts
-            </button>
-          )}
-
-          <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md text-emerald-600 px-4 py-2 rounded-2xl shadow-sm border border-emerald-100 text-[11px] font-semibold">
-            <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse" />
-
-            Active Radar
-          </div>
+  <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md text-emerald-600 px-4 py-2 rounded-2xl shadow-sm border border-emerald-100 text-[11px] font-semibold">
+    <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse" />
+    Active Radar
+  </div>
         </div>
       </header>
 
       <main className="px-6 space-y-6">
-
         <AnimatePresence mode="popLayout">
-
           {pendingTrips.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-
               {pendingTrips.map((trip: any) => (
                 <div key={trip.id}>
-                  <TripCard
-                    trip={trip}
+                  <TripCard 
+                    trip={trip} 
                     onAccept={acceptTrip}
-                    onReject={rejectTrip}
-                    isLoading={loadingTripIds.has(
-                      trip.id
-                    )}
+                    onReject={rejectTrip} 
+                    isLoading={loadingTripIds.has(trip.id)}
                   />
                 </div>
               ))}
             </div>
           ) : (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex flex-col items-center justify-center pt-20"
+            <motion.div 
+               initial={{ opacity: 0 }}
+               animate={{ opacity: 1 }}
+               className="flex flex-col items-center justify-center pt-20"
             >
-              <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center premium-shadow mb-6 relative">
-
-                <Search
-                  size={32}
-                  className="text-primary/20"
-                />
-
-                <motion.div
-                  animate={{
-                    scale: [1, 1.5],
-                    opacity: [0.3, 0],
-                  }}
-                  transition={{
-                    repeat: Infinity,
-                    duration: 2,
-                  }}
-                  className="absolute inset-0 border-2 border-primary rounded-full"
-                />
-              </div>
-
-              <h3 className="text-xl font-bold text-neutral-900">
-                Searching for trips...
-              </h3>
-
-              <p className="text-sm text-neutral-400 mt-2 font-medium">
-                Sit tight, we're scanning your area.
-              </p>
+               <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center premium-shadow mb-6 relative">
+                 <Search size={32} className="text-primary/20" />
+                 <motion.div 
+                    animate={{ scale: [1, 1.5], opacity: [0.3, 0] }}
+                    transition={{ repeat: Infinity, duration: 2 }}
+                    className="absolute inset-0 border-2 border-primary rounded-full"
+                 />
+               </div>
+               <h3 className="text-xl font-bold text-neutral-900">Searching for trips...</h3>
+               <p className="text-sm text-neutral-400 mt-2 font-medium">Sit tight, we're scanning your area.</p>
             </motion.div>
           )}
-
         </AnimatePresence>
 
         {pendingTrips.length > 0 && (
           <div className="flex items-center gap-3 bg-blue-50 p-4 rounded-2xl border border-blue-100">
-
-            <Info
-              className="text-blue-500 flex-shrink-0"
-              size={20}
-            />
-
-            <p className="text-xs text-blue-700 font-bold leading-tight">
-              Fastest fingers first! Trip requests
-              are sent to multiple drivers
-              simultaneously.
-            </p>
+             <Info className="text-blue-500 flex-shrink-0" size={20} />
+             <p className="text-xs text-blue-700 font-bold leading-tight">
+               Fastest fingers first! Trip requests are sent to multiple drivers simultaneously.
+             </p>
           </div>
         )}
-
       </main>
 
+      {/* Notifications and Audio are handled by TripProvider context */}
     </div>
   );
 }

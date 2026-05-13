@@ -346,12 +346,15 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     
     setLoadingTripIds(prev => new Set(prev).add(tripId));
     try {
-      console.log(`[TripAction] Accepting trip: ${tripId}`);
+      // DEBUG: Log the manual call to avoid "auto-accept" confusion
+      console.log(`[TripAction] MANUAL ACCEPT TRIGGERED for trip: ${tripId} by driver: ${driver.id}`);
+      
       const { fcmService } = await import('../services/fcmService');
       fcmService.stopTripSound();
       
       const result = await updateTripStatus(tripId, 'ACCEPTED', driver.id);
       if (result.success) {
+        console.log(`[TripAction] Trip ${tripId} successfully accepted`);
         await refreshTrips();
       } else {
         console.error('[TripAction] Accept Failed:', result.error);
