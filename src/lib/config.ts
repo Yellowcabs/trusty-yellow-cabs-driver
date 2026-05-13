@@ -11,7 +11,7 @@ export const getBaseUrl = () => {
     // In Capacitor/APK, we MUST point to a real external URL, not localhost
     if (isCapacitor) {
       // Default production URL for AIS environment
-      const aiStudioUrl = 'https://ais-dev-uqgore4bofclvpax7gqjqi-242082848033.asia-southeast1.run.app/api';
+      const aiStudioUrl = 'https://ais-pre-uqgore4bofclvpax7gqjqi-242082848033.asia-southeast1.run.app';
       
       // If the current window.location contains a hints about the production domain, use it
       if (window.location.hostname && !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')) {
