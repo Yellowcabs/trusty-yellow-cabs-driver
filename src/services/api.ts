@@ -45,33 +45,24 @@ async function safeFetch(url: string, options: any = {}): Promise<Response> {
   if (isCapacitor) {
     try {
       const { CapacitorHttp } = await import('@capacitor/core');
-      const method = (options.method || 'GET').toUpperCase();
+      const method = options.method || 'GET';
       
       const config: any = {
         url,
-        headers: options.headers || {},
+        headers: options.headers || { 'Accept': 'application/json' },
       };
 
-      if (!config.headers['Accept']) {
-        config.headers['Accept'] = 'application/json';
-      }
-
       if (options.body) {
-        if (typeof options.body === 'string') {
-          try {
-            config.data = JSON.parse(options.body);
-            if (!config.headers['Content-Type']) {
-              config.headers['Content-Type'] = 'application/json';
-            }
-          } catch (e) {
-            config.data = options.body;
+        try {
+          config.data = JSON.parse(options.body);
+          if (!config.headers['Content-Type']) {
+            config.headers['Content-Type'] = 'application/json';
           }
-        } else {
+        } catch (e) {
           config.data = options.body;
         }
       }
 
-      console.log(`[SafeFetch] ${method} ${url}`);
       const response = await (CapacitorHttp as any)[method.toLowerCase()](config);
       
       return {
@@ -81,13 +72,8 @@ async function safeFetch(url: string, options: any = {}): Promise<Response> {
         text: async () => typeof response.data === 'string' ? response.data : JSON.stringify(response.data),
         headers: new Headers(response.headers)
       } as Response;
-    } catch (e: any) {
-      console.error('[SafeFetch] CapacitorHttp Error:', e);
-      // Fallback to fetch only if CapacitorHttp actually failed to even start
-      if (e.message?.includes('found') || e.message?.includes('import')) {
-         return fetch(url, options);
-      }
-      throw e; // Re-throw if it was a network error or something else CapacitorHttp specific
+    } catch (e) {
+      console.error('[SafeFetch] CapacitorHttp Error, falling back to web fetch:', e);
     }
   }
   return fetch(url, options);
@@ -448,7 +434,7 @@ export async function rejectTripApi(tripId: string, driverId: string, currentRej
     
     // Remove any existing rejection entry for this driver (handle both old plain ID and new ID|timestamp)
     const filteredRejections = (currentRejectedBy || []).filter(entry => {
-      const entryId = entry && entry.includes('|') ? entry.split('|')[0] : entry;
+      const entryId = entry.includes('|') ? entry.split('|')[0] : entry;
       return entryId !== driverId;
     });
     
@@ -780,7 +766,7 @@ export async function updateLocationApi(driverId: string, lat: number, lng: numb
 export async function uploadDriverPhoto(file: File, driverId: string): Promise<string | null> {
   try {
     if (!isSupabaseConfigured) return null;
-    const fileExt = file?.name?.split('.').pop() || 'jpg';
+    const fileExt = file.name.split('.').pop();
     const fileName = `${driverId}-${Math.random()}.${fileExt}`;
     const filePath = `${fileName}`; // Just put in root of bucket or a subfolder
 
