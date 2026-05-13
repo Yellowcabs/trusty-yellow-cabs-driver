@@ -1,19 +1,18 @@
 export const getBaseUrl = () => {
-  // ENV URL
+  // ENV URL (optional override)
   const envUrl = import.meta.env.VITE_BACKEND_URL;
 
   if (envUrl) {
     return envUrl.replace(/\/$/, '');
   }
 
-  // USE ONLY VERCEL DOMAIN
+  // ✅ FIX: use current origin for WEB + APK (Capacitor safe)
   const baseUrl =
-    'https://trusty-yellow-cabs-driver.vercel.app';
+    typeof window !== 'undefined'
+      ? window.location.origin
+      : '';
 
-  console.log(
-    '[Config] Using Backend:',
-    baseUrl
-  );
+  console.log('[Config] Using Backend:', baseUrl);
 
   return baseUrl;
 };
