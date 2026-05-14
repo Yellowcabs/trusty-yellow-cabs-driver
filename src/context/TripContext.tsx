@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { Trip } from '../types';
-import { fetchTrips, updateTripStatus, deleteTripApi, rejectTripApi } from '../services/api';
+import { fetchTrips, updateTripStatus, rejectTripApi } from '../services/api';
 import { useAuth } from './AuthContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { getDistance } from '../lib/utils';
@@ -35,336 +35,178 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   }, [driver]);
 
   const showNotification = useCallback((trip: any) => {
+    // Only show if the app is not in the foreground or on specific logic
     const title = 'New Trip Request! 🚕';
     const options = {
       body: `From: ${trip.pickup.split(',')[0]} (₹${trip.fare})\nTo: ${trip.drop.split(',')[0]}`,
       icon: 'https://cdn-icons-png.flaticon.com/512/3063/3063822.png',
-      badge: 'https://cdn-icons-png.flaticon.com/512/3063/3063822.png',
       tag: 'new-trip',
-      vibrate: [500, 110, 500, 110, 450, 110, 200, 110, 170, 40, 450, 110, 200, 110, 170, 40],
+      vibrate: [500, 110, 500, 110, 450, 110],
       requireInteraction: true,
-      data: { url: window.location.origin + '/requests' }
     };
 
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission === 'granted') {
-        // Try to show via service worker for better background support
-        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-          navigator.serviceWorker.ready.then(registration => {
-            registration.showNotification(title, options);
-          });
-        } else {
-          const n = new Notification(title, options);
-          n.onclick = () => {
-            window.focus();
-            window.location.href = '/requests';
-            n.close();
-          };
-        }
-      } else if (Notification.permission !== 'denied') {
-        Notification.requestPermission();
-      }
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      new Notification(title, options);
     }
   }, []);
 
-  const updatePendingTrips = useCallback((trips: Trip[]) => {
+  const updateLocalTripState = useCallback((trips: Trip[]) => {
     const currentDriver = driverRef.current;
-    if (!currentDriver?.isOnline) {
-      setPendingTrips([]);
-      lastTripIdRef.current = null;
-      return;
-    }
+    if (!currentDriver) return;
 
+    // 1. Identify Pending Trips for this driver
     const now = Date.now();
     const pending = trips.filter(t => {
       if (t.status !== 'PENDING') return false;
       
-      // Location Based Assignment
-      if (t.targetLocationOnly && t.pickupLat && t.pickupLng && currentDriver?.latitude && currentDriver?.longitude) {
+      // Radius filtering
+      if (t.targetLocationOnly && t.pickupLat && t.pickupLng && currentDriver.latitude && currentDriver.longitude) {
         const distance = getDistance(t.pickupLat, t.pickupLng, currentDriver.latitude, currentDriver.longitude);
         if (distance > (t.targetRadius || 5)) return false;
       }
-      // If targetLocationOnly is false, it shows to all (as requested)
-      
+
+      // Rejection filtering
       if (!t.rejectedBy || t.rejectedBy.length === 0) return true;
-      
-      // Check if rejected by this driver and if the timeout (60s) has passed
-      const myRejection = t.rejectedBy.find(entry => {
-        const entryId = entry.includes('|') ? entry.split('|')[0] : entry;
-        return entryId === currentDriver.id;
-      });
-      
+      const myRejection = t.rejectedBy.find(entry => entry.startsWith(currentDriver.id));
       if (!myRejection) return true;
-      
-      // If it's the old format (just ID), we assume it's permanent for compatibility
-      if (!myRejection.includes('|')) return false; 
+      if (!myRejection.includes('|')) return false;
       
       const [, timestampStr] = myRejection.split('|');
-      const timestamp = parseInt(timestampStr, 10);
-      
-      // Show again if more than 60 seconds have passed (60000 ms)
-      return (now - timestamp) > 60000;
+      return (now - parseInt(timestampStr, 10)) > 60000; // 60s timeout
     });
 
-    setPendingTrips(prev => {
-      // Only update if the list of trip IDs has changed to avoid unnecessary re-renders
-      const prevIds = prev.map(p => p.id).join(',');
-      const currIds = pending.map(p => p.id).join(',');
-      if (prevIds === currIds) return prev;
-      return pending;
-    });
+    setPendingTrips(pending);
+
+    // 2. Identify Active Trip
+    // An active trip is anything assigned to this driver that isn't COMPLETED or CANCELLED
+    const active = trips.find(t =>
+      t.driverId === currentDriver.id &&
+      !['COMPLETED', 'CANCELLED'].includes(t.status)
+    );
     
-    // Alert for new trips if we have more than before
+    setActiveTrip(active || null);
+
+    // 3. Notification Logic
     if (pending.length > 0 && pending[0].id !== lastTripIdRef.current) {
-      // Avoid double alerting on initial mount
-      if (lastTripIdRef.current !== null) {
-        showNotification(pending[0]);
-      }
+      if (lastTripIdRef.current !== null) showNotification(pending[0]);
       lastTripIdRef.current = pending[0].id;
     } else if (pending.length === 0) {
       lastTripIdRef.current = null;
     }
-  }, [driver?.id, driver?.isOnline, showNotification]);
+  }, [showNotification]);
 
   const refreshTrips = useCallback(async () => {
-    const currentDriver = driverRef.current;
-    if (!currentDriver) return;
+    const d = driverRef.current;
+    if (!d) return;
 
-    let pending, assigned;
-    
-    if (currentDriver.id === 'admin') {
-      [pending, assigned] = await Promise.all([
-        fetchTrips({ status: 'PENDING', limit: 100 }),
-        fetchTrips({ limit: 100 })
-      ]);
-    } else {
-      [pending, assigned] = await Promise.all([
+    try {
+      const [pendingData, myData] = await Promise.all([
         fetchTrips({ status: 'PENDING', limit: 20 }),
-        fetchTrips({ driverId: currentDriver.id, limit: 10 })
+        fetchTrips({ driverId: d.id, limit: 10 })
       ]);
-    }
 
-    const combinedTrips = [...pending, ...assigned];
-    const uniqueTrips = Array.from(new Map(combinedTrips.map(t => [t.id, t])).values());
-    
-    setAllTrips(uniqueTrips);
-    updatePendingTrips(uniqueTrips);
-    
-    const active = uniqueTrips.find(t => t.driverId === currentDriver.id && !['COMPLETED', 'CANCELLED'].includes(t.status));
-    setActiveTrip(active || null);
-  }, [updatePendingTrips]);
+      const combined = [...pendingData, ...myData];
+      const unique = Array.from(new Map(combined.map(t => [t.id, t])).values());
+
+      setAllTrips(unique);
+      updateLocalTripState(unique);
+    } catch (e) {
+      console.error('Failed to refresh trips:', e);
+    }
+  }, [updateLocalTripState]);
 
   useEffect(() => {
-    const currentDriver = driverRef.current;
-    if (!currentDriver?.id) return;
+    if (!driver?.id) return;
 
-    const currentDriverId = currentDriver.id;
-    const currentIsAdmin = currentDriverId === 'admin';
-
+    // Initial load
     refreshTrips();
 
-    // Listen for app coming to foreground
+    // Foreground sync
     const appStateListener = App.addListener('appStateChange', ({ isActive }) => {
-      if (isActive) {
-        refreshTrips();
-      }
-    });
-    
-    if (!isSupabaseConfigured) {
-      const pollInterval = setInterval(refreshTrips, 15000); 
-      return () => {
-        appStateListener.then(h => h.remove());
-        clearInterval(pollInterval);
-      };
-    }
-
-    // ... (mapRowToTrip remains the same)
-
-    const mapRowToTrip = (row: any): Trip => ({
-      id: row.id,
-      pickup: row.pickup,
-      pickupLat: row.pickup_lat,
-      pickupLng: row.pickup_lng,
-      drop: row.drop,
-      dropLat: row.drop_lat,
-      dropLng: row.drop_lng,
-      customerName: row.customer_name,
-      customerPhone: row.customer_phone,
-      fare: Number(row.fare),
-      baseFare: row.base_fare ? Number(row.base_fare) : undefined,
-      kmsFare: row.kms_fare ? Number(row.kms_fare) : undefined,
-      distance: row.distance,
-      rideType: row.ride_type,
-      status: row.status,
-      timestamp: row.timestamp,
-      driverId: row.driver_id,
-      rejectedBy: row.rejected_by || [],
-      releasedBy: row.released_by || [],
-      startTime: row.start_time,
-      endTime: row.end_time,
-      actualStartLat: row.actual_start_lat,
-      actualStartLng: row.actual_start_lng,
-      actualEndLat: row.actual_end_lat,
-      actualEndLng: row.actual_end_lng,
-      actualDistance: row.actual_distance,
-      targetLocationOnly: row.target_location_only,
-      targetRadius: row.target_radius
+      if (isActive) refreshTrips();
     });
 
-    const handleChanges = (payload: any) => {
-      const { eventType, new: newRecord, old: oldRecord } = payload;
-      const d = driverRef.current;
-      if (!d) return;
+    // Polling fallback (crucial for mobile when subscriptions drop)
+    const pollInterval = setInterval(refreshTrips, 15000);
 
-      setAllTrips(prevTrips => {
-        let updatedTrips = [...prevTrips];
-        
-        const isRelevant = 
-          d.id === 'admin' || 
-          newRecord?.status === 'PENDING' || 
-          newRecord?.driver_id === d.id ||
-          oldRecord?.status === 'PENDING' || 
-          oldRecord?.driver_id === d.id;
-
-        if (!isRelevant) return prevTrips;
-
-        // ... event handling ...
-        if (eventType === 'INSERT') {
-          if (!updatedTrips.find(t => t.id === newRecord.id)) {
-            updatedTrips = [mapRowToTrip(newRecord), ...updatedTrips];
-          }
-        } else if (eventType === 'UPDATE') {
-          const index = updatedTrips.findIndex(t => t.id === newRecord.id);
-          if (index !== -1) {
-            updatedTrips[index] = {
-              ...updatedTrips[index],
-              ...mapRowToTrip(newRecord)
-            };
-          } else {
-            updatedTrips = [mapRowToTrip(newRecord), ...updatedTrips];
-          }
-        } else if (eventType === 'DELETE') {
-          updatedTrips = updatedTrips.filter(t => t.id !== oldRecord.id);
-        }
-
-        updatePendingTrips(updatedTrips);
-        
-        const active = updatedTrips.find(t => t.driverId === d.id && !['COMPLETED', 'CANCELLED'].includes(t.status));
-        setActiveTrip(active || null);
-        
-        return updatedTrips;
-      });
-    };
-
+    // Real-time Subscriptions
     let channels: any[] = [];
-    
-    if (currentIsAdmin) {
-      const allChannel = supabase
-        .channel('all-trips')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, handleChanges)
-        .subscribe();
-      channels.push(allChannel);
-    } else {
-      const pendingChannel = supabase
-        .channel('pending-trips')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: 'status=eq.PENDING' }, handleChanges)
-        .subscribe();
+    if (isSupabaseConfigured) {
+      const handlePayload = () => refreshTrips(); // Simple & robust: just refresh all state on any change
       
-      const myChannel = supabase
-        .channel('my-trips')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `driver_id=eq.${currentDriverId}` }, handleChanges)
+      const pendingChannel = supabase.channel('trips-pending')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: 'status=eq.PENDING' }, handlePayload)
         .subscribe();
-      
+
+      const myChannel = supabase.channel('trips-mine')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `driver_id=eq.${driver.id}` }, handlePayload)
+        .subscribe();
+
       channels.push(pendingChannel, myChannel);
     }
 
-    const pollInterval = setInterval(refreshTrips, currentIsAdmin ? 30000 : 15000); 
-    
     return () => {
       appStateListener.then(h => h.remove());
-      channels.forEach(ch => supabase.removeChannel(ch));
       clearInterval(pollInterval);
+      channels.forEach(ch => supabase.removeChannel(ch));
     };
-  }, [driver?.id, driver?.isOnline, refreshTrips, updatePendingTrips]);
-
-  // Keep the timer for re-evaluating rejected trips local state
-  useEffect(() => {
-    const timerInterval = setInterval(() => {
-      setAllTrips(currentAllTrips => {
-        updatePendingTrips(currentAllTrips);
-        return currentAllTrips;
-      });
-    }, 5000); // 5 seconds is enough for checking local rejection timeouts
-    
-    return () => clearInterval(timerInterval);
-  }, [updatePendingTrips]);
+  }, [driver?.id, refreshTrips]);
 
   const acceptTrip = async (tripId: string) => {
-    if (!driver || driver.isBlocked) return;
-    const result = await updateTripStatus(tripId, 'ACCEPTED', driver.id);
-    if (result.success) {
-      await refreshTrips();
-    }
-  };
-  
-  const releaseTrip = async (tripId: string, reason: string) => {
-    if (!driver || driver.isBlocked) return;
-    const { releaseTripApi } = await import('../services/api');
-    const trip = allTrips.find(t => t.id === tripId);
-    const result = await releaseTripApi(tripId, driver.id, trip?.releasedBy || [], reason);
-    if (result.success) {
-      setActiveTrip(null);
-      await refreshTrips();
-    }
-  };
-  
-  const rejectTrip = async (tripId: string) => {
-    if (!driver || driver.isBlocked) return;
-    const trip = allTrips.find(t => t.id === tripId);
-    if (!trip) return;
-    
-    const result = await rejectTripApi(tripId, driver.id, trip.rejectedBy || []);
-    if (result.success) {
-      await refreshTrips();
-    }
-  };
-
-  const createTrip = async (tripData: Omit<Trip, 'id' | 'status' | 'timestamp'>) => {
-    const { createTripApi } = await import('../services/api');
-    const result = await createTripApi(tripData);
-    if (result.success) {
-      await refreshTrips();
-    }
-    return { success: result.success, error: result.error };
+    if (!driver) return;
+    const res = await updateTripStatus(tripId, 'ACCEPTED', driver.id);
+    if (res.success) await refreshTrips();
   };
 
   const updateStatus = async (status: Trip['status'], extraData?: any) => {
-    if (!activeTrip || !driver || driver.isBlocked) return;
-    const result = await updateTripStatus(activeTrip.id, status, driver.id, extraData);
-    if (result.success) {
-      await refreshTrips();
-    }
+    if (!activeTrip || !driver) return;
+    const res = await updateTripStatus(activeTrip.id, status, driver.id, extraData);
+    if (res.success) await refreshTrips();
+  };
+
+  const releaseTrip = async (tripId: string, reason: string) => {
+    if (!driver) return;
+    const { releaseTripApi } = await import('../services/api');
+    const trip = allTrips.find(t => t.id === tripId);
+    const res = await releaseTripApi(tripId, driver.id, trip?.releasedBy || [], reason);
+    if (res.success) await refreshTrips();
+  };
+
+  const rejectTrip = async (tripId: string) => {
+    if (!driver) return;
+    const trip = allTrips.find(t => t.id === tripId);
+    if (!trip) return;
+    const res = await rejectTripApi(tripId, driver.id, trip.rejectedBy || []);
+    if (res.success) await refreshTrips();
+  };
+
+  const createTrip = async (tripData: any) => {
+    const { createTripApi } = await import('../services/api');
+    const res = await createTripApi(tripData);
+    if (res.success) await refreshTrips();
+    return res;
   };
 
   const cancelTrip = async (tripId: string) => {
-    const result = await updateTripStatus(tripId, 'CANCELLED');
-    if (result.success) {
-      await refreshTrips();
-    }
-    return result;
+    const res = await updateTripStatus(tripId, 'CANCELLED');
+    if (res.success) await refreshTrips();
+    return res;
   };
 
   const updateTripFare = async (tripId: string, fare: number) => {
     const { updateTripFareApi } = await import('../services/api');
-    const result = await updateTripFareApi(tripId, fare);
-    if (result.success) {
-      await refreshTrips();
-    }
-    return result;
+    const res = await updateTripFareApi(tripId, fare);
+    if (res.success) await refreshTrips();
+    return res;
   };
 
   return (
-    <TripContext.Provider value={{ pendingTrips, activeTrip, allTrips, acceptTrip, rejectTrip, releaseTrip, updateStatus, createTrip, cancelTrip, updateTripFare, refreshTrips }}>
+    <TripContext.Provider value={{
+      pendingTrips, activeTrip, allTrips,
+      acceptTrip, rejectTrip, releaseTrip,
+      updateStatus, createTrip, cancelTrip,
+      updateTripFare, refreshTrips
+    }}>
       {children}
     </TripContext.Provider>
   );
@@ -372,8 +214,6 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
 
 export function useTrips() {
   const context = useContext(TripContext);
-  if (context === undefined) {
-    throw new Error('useTrips must be used within a TripProvider');
-  }
+  if (context === undefined) throw new Error('useTrips must be used within a TripProvider');
   return context;
 }
