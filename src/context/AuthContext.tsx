@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Driver } from '../types';
 import { fcmService } from '../services/fcmService';
+import { Preferences } from '@capacitor/preferences';
 
 interface AuthContextType {
   driver: Driver | null;
@@ -15,26 +16,27 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const STORAGE_KEY = 'trusty_driver';
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [driver, setDriver] = useState<Driver | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  /* -------------------- INIT AUTH (FIXED) -------------------- */
+  /* -------------------- INIT AUTH (APK SAFE FIX) -------------------- */
   useEffect(() => {
     const initAuth = async () => {
       try {
-        const savedDriver = localStorage.getItem('trusty_driver');
+        const { value } = await Preferences.get({ key: STORAGE_KEY });
 
-        if (savedDriver) {
-          const parsed = JSON.parse(savedDriver);
+        if (value) {
+          const parsed = JSON.parse(value);
           setDriver(parsed);
 
-          // IMPORTANT: wait refresh to avoid race condition
           await refreshDriverStatus(parsed.id);
         }
       } catch (err) {
         console.error('Auth init error:', err);
-        localStorage.removeItem('trusty_driver');
+        await Preferences.remove({ key: STORAGE_KEY });
       } finally {
         setIsLoading(false);
       }
@@ -43,7 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     initAuth();
   }, []);
 
-  /* -------------------- LOCATION + BACKGROUND TRACKING -------------------- */
+  /* -------------------- LOCATION + TRACKING -------------------- */
   useEffect(() => {
     if (!driver?.id || driver.id === 'admin' || driver.isBlocked) return;
 
@@ -56,27 +58,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if ('geolocation' in navigator && driver?.isOnline) {
       watchId = navigator.geolocation.watchPosition(
         async (pos) => {
-          const { latitude, longitude, heading, accuracy } = pos.coords;
+          const { latitude, longitude, heading } = pos.coords;
 
           try {
             const { updateLocationApi } = await import('../services/api');
             await updateLocationApi(driver.id, latitude, longitude, heading || undefined);
 
             setDriver(prev =>
-              prev
-                ? { ...prev, latitude, longitude, heading: heading || undefined }
-                : null
+              prev ? { ...prev, latitude, longitude, heading: heading || undefined } : null
             );
           } catch (e) {
             console.error('Location update failed:', e);
           }
         },
         (err) => console.error('GPS Error:', err),
-        {
-          enableHighAccuracy: true,
-          timeout: 15000,
-          maximumAge: 10000
-        }
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
       );
     }
 
@@ -84,9 +80,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearInterval(interval);
       if (watchId !== null) navigator.geolocation.clearWatch(watchId);
     };
-  }, [driver?.id]);
+  }, [driver?.id, driver?.isOnline]);
 
-  /* -------------------- REFRESH DRIVER -------------------- */
+  /* -------------------- REFRESH -------------------- */
   const refreshDriverStatus = async (forcedId?: string) => {
     const driverId = forcedId || driver?.id;
     if (!driverId || driverId === 'admin') return;
@@ -99,7 +95,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (current) {
         setDriver(current);
-        localStorage.setItem('trusty_driver', JSON.stringify(current));
+        await Preferences.set({
+          key: STORAGE_KEY,
+          value: JSON.stringify(current)
+        });
       }
     } catch (e) {
       console.error('refreshDriverStatus error:', e);
@@ -126,7 +125,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
 
         setDriver(adminDriver);
-        localStorage.setItem('trusty_driver', JSON.stringify(adminDriver));
+        await Preferences.set({
+          key: STORAGE_KEY,
+          value: JSON.stringify(adminDriver)
+        });
+
         return true;
       }
       return false;
@@ -137,7 +140,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (dbDriver && !dbDriver.isBlocked) {
       setDriver(dbDriver);
-      localStorage.setItem('trusty_driver', JSON.stringify(dbDriver));
+
+      await Preferences.set({
+        key: STORAGE_KEY,
+        value: JSON.stringify(dbDriver)
+      });
+
       return true;
     }
 
@@ -145,10 +153,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   /* -------------------- LOGOUT -------------------- */
-  const logout = () => {
+  const logout = async () => {
     fcmService.stopTripSound();
     setDriver(null);
-    localStorage.removeItem('trusty_driver');
+    await Preferences.remove({ key: STORAGE_KEY });
   };
 
   /* -------------------- TOGGLE ONLINE -------------------- */
@@ -162,7 +170,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (success) {
         const updated = { ...driver, isOnline: status };
         setDriver(updated);
-        localStorage.setItem('trusty_driver', JSON.stringify(updated));
+
+        await Preferences.set({
+          key: STORAGE_KEY,
+          value: JSON.stringify(updated)
+        });
       }
     } catch (e) {
       console.error('toggleOnline error:', e);

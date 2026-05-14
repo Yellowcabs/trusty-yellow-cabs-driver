@@ -135,6 +135,44 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
  * -- Add fcm_token to drivers table for push notifications
  * ALTER TABLE drivers ADD COLUMN IF NOT EXISTS fcm_token TEXT;
  */
+export async function verifyDriverSessionApi(driverId: string, pin: string): Promise<Driver | null> {
+  try {
+    if (!isSupabaseConfigured) return null;
+
+    const { data, error } = await supabase
+      .from('drivers')
+      .select('*')
+      .eq('id', driverId)
+      .eq('pin', pin)
+      .single();
+
+    if (error || !data) return null;
+
+    return {
+      id: data.id,
+      name: data.name,
+      phone: data.phone,
+      pin: data.pin,
+      vehicleModel: data.vehicle_model,
+      vehicleNumber: data.vehicle_number,
+      isOnline: data.is_online,
+      rating: Number(data.rating),
+      totalEarnings: Number(data.total_earnings),
+      completedRides: data.completed_rides,
+      avatarUrl: data.avatar_url,
+      isBlocked: data.is_blocked,
+      officeFee: Number(data.office_fee || 0),
+      latitude: data.latitude,
+      longitude: data.longitude,
+      heading: data.heading,
+      lastSeen: data.last_seen,
+      fcmToken: data.fcm_token
+    };
+  } catch (e) {
+    console.error('Session verify error:', e);
+    return null;
+  }
+}
 
 export async function fetchTrips(filters?: { status?: Trip['status']; driverId?: string; limit?: number }): Promise<Trip[]> {
   try {
