@@ -183,3 +183,23 @@ export async function updateTripStatus(
     };
   }
 }
+export async function updateFcmTokenApi(
+  driverId: string,
+  token: string | null
+): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('drivers')
+      .update({
+        fcm_token: token
+      })
+      .eq('id', driverId);
+
+    if (error) throw error;
+
+    return true;
+  } catch (e: any) {
+    console.error('FCM token update error:', e.message || e);
+    return false;
+  }
+}
