@@ -1,127 +1,91 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { updateLocationApi } from '../services/api';
 
 export function LocationTracker() {
   const { driver, isAdmin } = useAuth();
   const lastUpdateRef = useRef<number>(0);
-  const UPDATE_INTERVAL = 10000; // 10 seconds for balanced performance
+  const UPDATE_INTERVAL = 8000; // 8 seconds for responsive tracking
   const [accuracy, setAccuracy] = useState<number | null>(null);
 
   useEffect(() => {
-    // Only track if logged in as a driver (and not the admin user) and is online
+    // Only track if logged in as a driver (and not the admin user)
     if (!driver || isAdmin || driver.id === 'admin' || !driver.isOnline) {
       setAccuracy(null);
       return;
     }
 
-    let watchId: any = null;
+    let watchId: number | null = null;
     let wakeLock: any = null;
-    let silentAudio: HTMLAudioElement | null = null;
-    const isCapacitor = typeof window !== 'undefined' && ((window as any).Capacitor || (window as any).webkit?.messageHandlers?.bridge);
-
-    // Silent audio hack to keep process alive in background
-    const startSilentAudio = () => {
-      if (silentAudio) return;
-      silentAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAP7/AAD+Pw==');
-      silentAudio.loop = true;
-      silentAudio.volume = 0.01;
-      
-      if ('mediaSession' in navigator) {
-        (navigator as any).mediaSession.metadata = new (window as any).MediaMetadata({
-          title: 'Trusty Cab - Service Active',
-          artist: driver.name,
-          artwork: [{ src: 'https://cdn-icons-png.flaticon.com/512/3063/3063822.png', sizes: '512x512', type: 'image/png' }]
-        });
-      }
-      silentAudio.play().catch(e => console.log('Silent audio blocked:', e));
-    };
 
     const requestWakeLock = async () => {
       try {
-        if ('wakeLock' in navigator) {
+        if ('wakeLock' in navigator && (navigator as any).wakeLock.request) {
           wakeLock = await (navigator as any).wakeLock.request('screen');
         }
       } catch (err: any) {
-        console.warn('Wake Lock failed:', err.message);
+        if (err.name !== 'NotAllowedError') {
+          console.warn('Wake Lock failed:', err.message);
+        }
       }
     };
 
-    const handlePosition = async (pos: any) => {
-      if (!pos) return;
-      const { latitude, longitude, heading, accuracy: locAccuracy } = pos.coords;
+    const handleLocationChange = (position: GeolocationPosition) => {
       const now = Date.now();
+      const { latitude, longitude, heading, accuracy: locAccuracy } = position.coords;
       
       setAccuracy(locAccuracy);
 
+      // Only update if interval passed or if it's the very first update
       if (now - lastUpdateRef.current >= UPDATE_INTERVAL || lastUpdateRef.current === 0) {
-        if (locAccuracy < 100) { // Accept reasonable accuracy
-          try {
-            const { updateLocationApi } = await import('../services/api');
-            await updateLocationApi(driver.id, latitude, longitude, heading || undefined);
-            lastUpdateRef.current = now;
-          } catch (e) {
-            console.error('Update location error:', e);
-          }
+        // Only accept reasonably accurate positions (under 80m for mobile GPS)
+        if (locAccuracy < 80) {
+          updateLocationApi(driver.id, latitude, longitude, heading || undefined);
+          lastUpdateRef.current = now;
+        } else if (lastUpdateRef.current === 0) {
+          // Fallback for first position if GPS is still warming up
+          updateLocationApi(driver.id, latitude, longitude, heading || undefined);
+          lastUpdateRef.current = now;
         }
       }
     };
 
-    const startTracking = async () => {
-      requestWakeLock();
-      startSilentAudio();
-
-      if (isCapacitor) {
-        try {
-          const { Geolocation } = await import('@capacitor/geolocation');
-          
-          await Geolocation.requestPermissions();
-          
-          watchId = await Geolocation.watchPosition(
-            { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 },
-            (pos, err) => {
-              if (err) console.error('Capacitor Geo Error:', err);
-              else handlePosition(pos);
-            }
-          );
-        } catch (e) {
-          console.error('Capacitor Geo failed, fallback:', e);
-          fallbackToWeb();
-        }
+    const handleError = (error: GeolocationPositionError) => {
+      console.error('Location error:', error.message);
+      if (error.code === error.PERMISSION_DENIED) {
+        setAccuracy(-2); // Specific permission error
       } else {
-        fallbackToWeb();
+        setAccuracy(-1);
       }
     };
 
-    const fallbackToWeb = () => {
-      if ('geolocation' in navigator) {
-        watchId = navigator.geolocation.watchPosition(
-          handlePosition,
-          (err) => console.error('Web Geo Error:', err),
-          { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
-        );
+    // Start tracking with high accuracy settings optimized for mobile
+    if ('geolocation' in navigator) {
+      watchId = navigator.geolocation.watchPosition(handleLocationChange, handleError, {
+        enableHighAccuracy: true,
+        timeout: 15000, // Slightly longer timeout for deep building starts
+        maximumAge: 0   // Force fresh GPS data, no caching
+      });
+      requestWakeLock();
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        requestWakeLock();
       }
     };
-
-    startTracking();
-
-    const handleVis = () => { if (document.visibilityState === 'visible') requestWakeLock(); };
-    document.addEventListener('visibilitychange', handleVis);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      if (watchId !== null) {
-        if (isCapacitor) {
-          import('@capacitor/geolocation').then(({ Geolocation }) => {
-            Geolocation.clearWatch({ id: watchId });
-          });
-        } else {
-          navigator.geolocation.clearWatch(watchId);
-        }
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      if (wakeLock !== null && wakeLock.release) {
+        try { wakeLock.release(); } catch(e) {}
       }
-      if (wakeLock?.release) wakeLock.release();
-      if (silentAudio) { silentAudio.pause(); silentAudio = null; }
-      document.removeEventListener('visibilitychange', handleVis);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [driver?.id, isAdmin, driver?.isOnline]);
+
+  if (!accuracy) return null;
 
   return null;
 }

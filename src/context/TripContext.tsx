@@ -29,10 +29,9 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   const lastTripIdRef = useRef<string | null>(null);
 
   const showNotification = useCallback((trip: any) => {
-    if (!trip) return;
     const title = 'New Trip Request! 🚕';
     const options = {
-      body: `From: ${trip.pickup?.split(',')[0] || trip.pickup || 'Unknown'} (₹${trip.fare || 0})\nTo: ${trip.drop?.split(',')[0] || trip.drop || 'Unknown'}`,
+      body: `From: ${trip.pickup.split(',')[0]} (₹${trip.fare})\nTo: ${trip.drop.split(',')[0]}`,
       icon: 'https://cdn-icons-png.flaticon.com/512/3063/3063822.png',
       badge: 'https://cdn-icons-png.flaticon.com/512/3063/3063822.png',
       tag: 'new-trip',
@@ -63,7 +62,6 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updatePendingTrips = useCallback((trips: Trip[]) => {
-    if (!Array.isArray(trips)) return;
     if (!driver?.isOnline) {
       setPendingTrips([]);
       lastTripIdRef.current = null;
@@ -85,18 +83,16 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       
       // Check if rejected by this driver and if the timeout (60s) has passed
       const myRejection = t.rejectedBy.find(entry => {
-        const entryId = entry && entry.includes('|') ? entry.split('|')[0] : entry;
+        const entryId = entry.includes('|') ? entry.split('|')[0] : entry;
         return entryId === driver.id;
       });
       
       if (!myRejection) return true;
       
       // If it's the old format (just ID), we assume it's permanent for compatibility
-      if (!myRejection || !myRejection.includes('|')) return false; 
+      if (!myRejection.includes('|')) return false; 
       
-      const parts = myRejection.split('|');
-      if (parts.length < 2) return false;
-      const [, timestampStr] = parts;
+      const [, timestampStr] = myRejection.split('|');
       const timestamp = parseInt(timestampStr, 10);
       
       // Show again if more than 60 seconds have passed (60000 ms)
