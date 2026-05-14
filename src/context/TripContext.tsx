@@ -4,6 +4,7 @@ import { fetchTrips, updateTripStatus, deleteTripApi, rejectTripApi } from '../s
 import { useAuth } from './AuthContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { getDistance } from '../lib/utils';
+import { App } from '@capacitor/app';
 
 interface TripContextType {
   pendingTrips: Trip[];
@@ -150,11 +151,52 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     if (!driver) return;
 
     refreshTrips();
+
+    // Listen for app coming to foreground
+    const appStateListener = App.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) {
+        refreshTrips();
+      }
+    });
     
     if (!isSupabaseConfigured) {
       const pollInterval = setInterval(refreshTrips, 30000); // Poll more frequently if realtime is off
-      return () => clearInterval(pollInterval);
+      return () => {
+        appStateListener.then(h => h.remove());
+        clearInterval(pollInterval);
+      };
     }
+
+    const mapRowToTrip = (row: any): Trip => ({
+      id: row.id,
+      pickup: row.pickup,
+      pickupLat: row.pickup_lat,
+      pickupLng: row.pickup_lng,
+      drop: row.drop,
+      dropLat: row.drop_lat,
+      dropLng: row.drop_lng,
+      customerName: row.customer_name,
+      customerPhone: row.customer_phone,
+      fare: Number(row.fare),
+      baseFare: row.base_fare ? Number(row.base_fare) : undefined,
+      kmsFare: row.kms_fare ? Number(row.kms_fare) : undefined,
+      distance: row.distance,
+      rideType: row.ride_type,
+      status: row.status,
+      timestamp: row.timestamp,
+      driverId: row.driver_id,
+      rejectedBy: row.rejected_by || [],
+      releasedBy: row.released_by || [],
+      startTime: row.start_time,
+      endTime: row.end_time,
+      actualStartLat: row.actual_start_lat,
+      actualStartLng: row.actual_start_lng,
+      actualEndLat: row.actual_end_lat,
+      actualEndLng: row.actual_end_lng,
+      actualDistance: row.actual_distance,
+      targetLocationOnly: row.target_location_only,
+      targetRadius: row.target_radius
+    });
 
     const handleChanges = (payload: any) => {
       const { eventType, new: newRecord, old: oldRecord } = payload;
@@ -173,92 +215,17 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
 
         if (eventType === 'INSERT') {
           if (!updatedTrips.find(t => t.id === newRecord.id)) {
-            const mappedTrip: Trip = {
-              id: newRecord.id,
-              pickup: newRecord.pickup,
-              pickupLat: newRecord.pickup_lat,
-              pickupLng: newRecord.pickup_lng,
-              drop: newRecord.drop,
-              dropLat: newRecord.drop_lat,
-              dropLng: newRecord.drop_lng,
-              customerName: newRecord.customer_name,
-              customerPhone: newRecord.customer_phone,
-              fare: Number(newRecord.fare),
-              baseFare: newRecord.base_fare ? Number(newRecord.base_fare) : undefined,
-              kmsFare: newRecord.kms_fare ? Number(newRecord.kms_fare) : undefined,
-              distance: newRecord.distance,
-              rideType: newRecord.ride_type,
-              status: newRecord.status,
-              timestamp: newRecord.timestamp,
-              driverId: newRecord.driver_id,
-              rejectedBy: newRecord.rejected_by || [],
-              releasedBy: newRecord.released_by || [],
-              startTime: newRecord.start_time,
-              endTime: newRecord.end_time,
-              actualStartLat: newRecord.actual_start_lat,
-              actualStartLng: newRecord.actual_start_lng,
-              actualEndLat: newRecord.actual_end_lat,
-              actualEndLng: newRecord.actual_end_lng,
-              actualDistance: newRecord.actual_distance,
-              targetLocationOnly: newRecord.target_location_only,
-              targetRadius: newRecord.target_radius
-            };
-            updatedTrips = [mappedTrip, ...updatedTrips];
+            updatedTrips = [mapRowToTrip(newRecord), ...updatedTrips];
           }
-        }
- else if (eventType === 'UPDATE') {
+        } else if (eventType === 'UPDATE') {
           const index = updatedTrips.findIndex(t => t.id === newRecord.id);
           if (index !== -1) {
-            const mappedTrip: Trip = {
+            updatedTrips[index] = {
               ...updatedTrips[index],
-              status: newRecord.status,
-              driverId: newRecord.driver_id,
-              fare: Number(newRecord.fare),
-              rejectedBy: newRecord.rejected_by || [],
-              releasedBy: newRecord.released_by || [],
-              startTime: newRecord.start_time,
-              endTime: newRecord.end_time,
-              actualStartLat: newRecord.actual_start_lat,
-              actualStartLng: newRecord.actual_start_lng,
-              actualEndLat: newRecord.actual_end_lat,
-              actualEndLng: newRecord.actual_end_lng,
-              actualDistance: newRecord.actual_distance,
-              targetLocationOnly: newRecord.target_location_only,
-              targetRadius: newRecord.target_radius
+              ...mapRowToTrip(newRecord)
             };
-            updatedTrips[index] = mappedTrip;
           } else {
-            const mappedTrip: Trip = {
-              id: newRecord.id,
-              pickup: newRecord.pickup,
-              pickupLat: newRecord.pickup_lat,
-              pickupLng: newRecord.pickup_lng,
-              drop: newRecord.drop,
-              dropLat: newRecord.drop_lat,
-              dropLng: newRecord.drop_lng,
-              customerName: newRecord.customer_name,
-              customerPhone: newRecord.customer_phone,
-              fare: Number(newRecord.fare),
-              baseFare: newRecord.base_fare ? Number(newRecord.base_fare) : undefined,
-              kmsFare: newRecord.kms_fare ? Number(newRecord.kms_fare) : undefined,
-              distance: newRecord.distance,
-              rideType: newRecord.ride_type,
-              status: newRecord.status,
-              timestamp: newRecord.timestamp,
-              driverId: newRecord.driver_id,
-              rejectedBy: newRecord.rejected_by || [],
-              releasedBy: newRecord.released_by || [],
-              startTime: newRecord.start_time,
-              endTime: newRecord.end_time,
-              actualStartLat: newRecord.actual_start_lat,
-              actualStartLng: newRecord.actual_start_lng,
-              actualEndLat: newRecord.actual_end_lat,
-              actualEndLng: newRecord.actual_end_lng,
-              actualDistance: newRecord.actual_distance,
-              targetLocationOnly: newRecord.target_location_only,
-              targetRadius: newRecord.target_radius
-            };
-            updatedTrips = [mappedTrip, ...updatedTrips];
+            updatedTrips = [mapRowToTrip(newRecord), ...updatedTrips];
           }
         } else if (eventType === 'DELETE') {
           updatedTrips = updatedTrips.filter(t => t.id !== oldRecord.id);
@@ -298,6 +265,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     const pollInterval = setInterval(refreshTrips, driver.id === 'admin' ? 30000 : 5000); 
     
     return () => {
+      appStateListener.then(h => h.remove());
       channels.forEach(ch => supabase.removeChannel(ch));
       clearInterval(pollInterval);
     };

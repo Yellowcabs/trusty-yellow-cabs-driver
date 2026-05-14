@@ -1,6 +1,8 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { Driver } from '../types';
 import { Preferences } from '@capacitor/preferences';
+import { App } from '@capacitor/app';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 import { fcmService } from '../services/fcmService';
 
@@ -20,6 +22,11 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [driver, setDriver] = useState<Driver | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const driverIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    driverIdRef.current = driver?.id || null;
+  }, [driver?.id]);
 
   useEffect(() => {
     const loadDriver = async () => {
@@ -27,13 +34,77 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (value) {
         const parsed = JSON.parse(value);
         setDriver(parsed);
-        // Refresh status on load if possible
+        // Initial refresh
         refreshDriverStatus(parsed.id);
       }
       setIsLoading(false);
     };
     loadDriver();
+
+    // Listen for app coming to foreground
+    const appStateListener = App.addListener('appStateChange', ({ isActive }) => {
+      if (isActive && driverIdRef.current) {
+        refreshDriverStatus(driverIdRef.current);
+      }
+    });
+
+    return () => {
+      appStateListener.then(h => h.remove());
+    };
   }, []);
+
+  // Supabase Real-time Sync for Driver Profile
+  useEffect(() => {
+    if (!driver?.id || driver.id === 'admin' || !isSupabaseConfigured) return;
+
+    const channel = supabase
+      .channel(`driver-sync-${driver.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'drivers',
+          filter: `id=eq.${driver.id}`,
+        },
+        (payload) => {
+          const updated = payload.new;
+          setDriver((prev) => {
+            if (!prev) return null;
+            const synced = {
+              ...prev,
+              name: updated.name,
+              phone: updated.phone,
+              vehicleModel: updated.vehicle_model,
+              vehicleNumber: updated.vehicle_number,
+              isOnline: updated.is_online,
+              rating: Number(updated.rating),
+              totalEarnings: Number(updated.total_earnings),
+              completedRides: updated.completed_rides,
+              isBlocked: updated.is_blocked,
+              officeFee: Number(updated.office_fee || 0),
+            };
+            
+            // Persist synced state
+            Preferences.set({
+              key: 'trusty_driver',
+              value: JSON.stringify(synced),
+            });
+            
+            return synced;
+          });
+          
+          if (updated.is_blocked) {
+            logout();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [driver?.id]);
 
   useEffect(() => {
     if (driver?.id && driver.id !== 'admin' && !driver.isBlocked) {
