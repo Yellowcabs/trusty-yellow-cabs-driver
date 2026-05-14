@@ -30,12 +30,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const loadDriver = async () => {
+      setIsLoading(true);
       const { value } = await Preferences.get({ key: 'trusty_driver' });
       if (value) {
         const parsed = JSON.parse(value);
         setDriver(parsed);
-        // Initial refresh
-        refreshDriverStatus(parsed.id);
+        // Revalidate from server immediately
+        try {
+          await refreshDriverStatus(parsed.id);
+        } catch (e) {
+          console.error('Initial driver revalidation failed:', e);
+        }
       }
       setIsLoading(false);
     };
@@ -110,7 +115,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (driver?.id && driver.id !== 'admin' && !driver.isBlocked) {
       const interval = setInterval(() => {
         refreshDriverStatus();
-      }, 30000); // Check every 30 seconds
+      }, 15000); // Check every 15 seconds for status updates (blocked, offline, etc)
 
       // Background-friendly Location Watcher
       let watchId: number | null = null;

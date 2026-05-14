@@ -27,7 +27,12 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   const [pendingTrips, setPendingTrips] = useState<Trip[]>([]);
   const [allTrips, setAllTrips] = useState<Trip[]>([]);
   const [activeTrip, setActiveTrip] = useState<Trip | null>(null);
+  const driverRef = useRef(driver);
   const lastTripIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    driverRef.current = driver;
+  }, [driver]);
 
   const showNotification = useCallback((trip: any) => {
     const title = 'New Trip Request! 🚕';
@@ -63,7 +68,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updatePendingTrips = useCallback((trips: Trip[]) => {
-    if (!driver?.isOnline) {
+    const currentDriver = driverRef.current;
+    if (!currentDriver?.isOnline) {
       setPendingTrips([]);
       lastTripIdRef.current = null;
       return;
@@ -74,8 +80,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       if (t.status !== 'PENDING') return false;
       
       // Location Based Assignment
-      if (t.targetLocationOnly && t.pickupLat && t.pickupLng && driver?.latitude && driver?.longitude) {
-        const distance = getDistance(t.pickupLat, t.pickupLng, driver.latitude, driver.longitude);
+      if (t.targetLocationOnly && t.pickupLat && t.pickupLng && currentDriver?.latitude && currentDriver?.longitude) {
+        const distance = getDistance(t.pickupLat, t.pickupLng, currentDriver.latitude, currentDriver.longitude);
         if (distance > (t.targetRadius || 5)) return false;
       }
       // If targetLocationOnly is false, it shows to all (as requested)
@@ -85,7 +91,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       // Check if rejected by this driver and if the timeout (60s) has passed
       const myRejection = t.rejectedBy.find(entry => {
         const entryId = entry.includes('|') ? entry.split('|')[0] : entry;
-        return entryId === driver.id;
+        return entryId === currentDriver.id;
       });
       
       if (!myRejection) return true;
@@ -118,14 +124,15 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     } else if (pending.length === 0) {
       lastTripIdRef.current = null;
     }
-  }, [driver, showNotification]);
+  }, [driver?.id, driver?.isOnline, showNotification]);
 
   const refreshTrips = useCallback(async () => {
-    if (!driver) return;
+    const currentDriver = driverRef.current;
+    if (!currentDriver) return;
 
     let pending, assigned;
     
-    if (driver.id === 'admin') {
+    if (currentDriver.id === 'admin') {
       [pending, assigned] = await Promise.all([
         fetchTrips({ status: 'PENDING', limit: 100 }),
         fetchTrips({ limit: 100 })
@@ -133,7 +140,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     } else {
       [pending, assigned] = await Promise.all([
         fetchTrips({ status: 'PENDING', limit: 20 }),
-        fetchTrips({ driverId: driver.id, limit: 10 })
+        fetchTrips({ driverId: currentDriver.id, limit: 10 })
       ]);
     }
 
@@ -143,12 +150,16 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     setAllTrips(uniqueTrips);
     updatePendingTrips(uniqueTrips);
     
-    const active = uniqueTrips.find(t => t.driverId === driver.id && !['COMPLETED', 'CANCELLED'].includes(t.status));
+    const active = uniqueTrips.find(t => t.driverId === currentDriver.id && !['COMPLETED', 'CANCELLED'].includes(t.status));
     setActiveTrip(active || null);
-  }, [driver, updatePendingTrips]);
+  }, [updatePendingTrips]);
 
   useEffect(() => {
-    if (!driver) return;
+    const currentDriver = driverRef.current;
+    if (!currentDriver?.id) return;
+
+    const currentDriverId = currentDriver.id;
+    const currentIsAdmin = currentDriverId === 'admin';
 
     refreshTrips();
 
@@ -160,12 +171,14 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     });
     
     if (!isSupabaseConfigured) {
-      const pollInterval = setInterval(refreshTrips, 30000); // Poll more frequently if realtime is off
+      const pollInterval = setInterval(refreshTrips, 15000); 
       return () => {
         appStateListener.then(h => h.remove());
         clearInterval(pollInterval);
       };
     }
+
+    // ... (mapRowToTrip remains the same)
 
     const mapRowToTrip = (row: any): Trip => ({
       id: row.id,
@@ -200,19 +213,22 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
 
     const handleChanges = (payload: any) => {
       const { eventType, new: newRecord, old: oldRecord } = payload;
-      
+      const d = driverRef.current;
+      if (!d) return;
+
       setAllTrips(prevTrips => {
         let updatedTrips = [...prevTrips];
         
         const isRelevant = 
-          driver.id === 'admin' || 
+          d.id === 'admin' || 
           newRecord?.status === 'PENDING' || 
-          newRecord?.driver_id === driver.id ||
+          newRecord?.driver_id === d.id ||
           oldRecord?.status === 'PENDING' || 
-          oldRecord?.driver_id === driver.id;
+          oldRecord?.driver_id === d.id;
 
         if (!isRelevant) return prevTrips;
 
+        // ... event handling ...
         if (eventType === 'INSERT') {
           if (!updatedTrips.find(t => t.id === newRecord.id)) {
             updatedTrips = [mapRowToTrip(newRecord), ...updatedTrips];
@@ -233,7 +249,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
 
         updatePendingTrips(updatedTrips);
         
-        const active = updatedTrips.find(t => t.driverId === driver.id && !['COMPLETED', 'CANCELLED'].includes(t.status));
+        const active = updatedTrips.find(t => t.driverId === d.id && !['COMPLETED', 'CANCELLED'].includes(t.status));
         setActiveTrip(active || null);
         
         return updatedTrips;
@@ -242,7 +258,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
 
     let channels: any[] = [];
     
-    if (driver.id === 'admin') {
+    if (currentIsAdmin) {
       const allChannel = supabase
         .channel('all-trips')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, handleChanges)
@@ -256,20 +272,20 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       
       const myChannel = supabase
         .channel('my-trips')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `driver_id=eq.${driver.id}` }, handleChanges)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `driver_id=eq.${currentDriverId}` }, handleChanges)
         .subscribe();
       
       channels.push(pendingChannel, myChannel);
     }
 
-    const pollInterval = setInterval(refreshTrips, driver.id === 'admin' ? 30000 : 5000); 
+    const pollInterval = setInterval(refreshTrips, currentIsAdmin ? 30000 : 15000); 
     
     return () => {
       appStateListener.then(h => h.remove());
       channels.forEach(ch => supabase.removeChannel(ch));
       clearInterval(pollInterval);
     };
-  }, [driver, refreshTrips, updatePendingTrips]);
+  }, [driver?.id, driver?.isOnline, refreshTrips, updatePendingTrips]);
 
   // Keep the timer for re-evaluating rejected trips local state
   useEffect(() => {
