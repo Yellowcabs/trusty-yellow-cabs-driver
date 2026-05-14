@@ -44,7 +44,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 const getBaseUrl = () => {
   if (Capacitor.isNativePlatform()) {
     // Replace with your actual deployment URL
-    return 'https://ais-dev-uqgore4bofclvpax7gqjqi-242082848033.asia-southeast1.run.app';
+    return 'https://trusty-yellow-cabs-driver.vercel.app';
   }
   return '';
 };
