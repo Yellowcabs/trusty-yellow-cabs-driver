@@ -35,19 +35,8 @@
  * }
  */
 
-import { Preferences } from '@capacitor/preferences';
-import { Capacitor } from '@capacitor/core';
 import { Trip, Driver } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-
-// Helper to get base URL for API calls in Capacitor
-const getBaseUrl = () => {
-  if (Capacitor.isNativePlatform()) {
-    // Replace with your actual deployment URL
-    return 'https://ais-dev-uqgore4bofclvpax7gqjqi-242082848033.asia-southeast1.run.app';
-  }
-  return '';
-};
 
 /**
  * SUPABASE SQL SCHEMA (Run this in Supabase SQL Editor)
@@ -155,7 +144,7 @@ export async function fetchTrips(filters?: { status?: Trip['status']; driverId?:
     if (filters?.limit) params.append('limit', filters.limit.toString());
     
     const queryStr = params.toString();
-    const url = `${getBaseUrl()}/api/trips${queryStr ? '?' + queryStr : ''}`;
+    const url = `/api/trips${queryStr ? '?' + queryStr : ''}`;
 
     // Try to fetch from backend first
     const response = await fetch(url);
@@ -240,8 +229,8 @@ export async function fetchTrips(filters?: { status?: Trip['status']; driverId?:
     }));
   } catch (e: any) {
     console.error('Supabase fetch error:', e.message || e);
-    const { value } = await Preferences.get({ key: 'trusty_trips_db' });
-    return value ? JSON.parse(value) : [];
+    const stored = localStorage.getItem('trusty_trips_db');
+    return stored ? JSON.parse(stored) : [];
   }
 }
 
@@ -269,7 +258,7 @@ export async function createTripApi(trip: Omit<Trip, 'id' | 'status' | 'timestam
     };
 
     // Try backend first
-    const response = await fetch(`${getBaseUrl()}/api/trips`, {
+    const response = await fetch('/api/trips', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newTripRow)
@@ -438,7 +427,7 @@ export async function fetchDrivers(filters?: { isOnline?: boolean; search?: stri
     if (filters?.limit) params.append('limit', filters.limit.toString());
     
     const queryStr = params.toString();
-    const url = `${getBaseUrl()}/api/drivers${queryStr ? '?' + queryStr : ''}`;
+    const url = `/api/drivers${queryStr ? '?' + queryStr : ''}`;
 
     // Try to fetch from backend first
     const response = await fetch(url);
@@ -504,8 +493,8 @@ export async function fetchDrivers(filters?: { isOnline?: boolean; search?: stri
     }));
   } catch (e: any) {
     console.error('Supabase fetch drivers error:', e.message || e);
-    const { value } = await Preferences.get({ key: 'trusty_drivers_db' });
-    return value ? JSON.parse(value) : [];
+    const stored = localStorage.getItem('trusty_drivers_db');
+    return stored ? JSON.parse(stored) : [];
   }
 }
 
@@ -560,7 +549,7 @@ export async function createDriverApi(driverData: Omit<Driver, 'rating' | 'total
 export async function updateDriverOnlineStatus(driverId: string, isOnline: boolean): Promise<boolean> {
   try {
     // Try backend first
-    const response = await fetch(`${getBaseUrl()}/api/drivers/${driverId}/online`, {
+    const response = await fetch(`/api/drivers/${driverId}/online`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ isOnline })

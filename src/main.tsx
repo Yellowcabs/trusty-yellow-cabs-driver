@@ -2,13 +2,6 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
-import { Capacitor } from '@capacitor/core';
-import { StatusBar, Style } from '@capacitor/status-bar';
-
-if (Capacitor.isNativePlatform()) {
-  StatusBar.setStyle({ style: Style.Dark });
-  StatusBar.setBackgroundColor({ color: '#FFD700' }); // primary color
-}
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
