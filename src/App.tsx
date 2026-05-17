@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { cn } from './lib/utils';
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+// FIX: Swapped BrowserRouter with HashRouter to prevent Android WebViews from locking route history states
+import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence } from 'motion/react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { TripProvider, useTrips } from './context/TripContext';
@@ -33,8 +34,8 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// FIX: Native Redirect Guard. This monitors real-time database state 
-// and seamlessly routes the driver to the correct screen inside the APK.
+// FIX: Native Redirect Guard to automatically switch viewports 
+// on live active trip updates without getting trapped by browser cache.
 function RouteGuard({ children }: { children: React.ReactNode }) {
   const { activeTrip } = useTrips();
   const navigate = useNavigate();
@@ -43,11 +44,10 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const isAdminPage = location.pathname === '/admin';
     
-    // The moment a trip becomes active, route directly to the active-trip page path
     if (activeTrip && !isAdminPage && location.pathname !== '/active-trip') {
+      console.log('Trip match verified. Routing driver directly to map workspace.');
       navigate('/active-trip', { replace: true });
     }
-    // If a trip finishes or is cancelled, safely return the driver home
     else if (!activeTrip && location.pathname === '/active-trip') {
       navigate('/', { replace: true });
     }
@@ -58,7 +58,6 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
 
 function Layout() {
   const location = useLocation();
-  // Hide the navigation bar entirely during active trips to give full screen space to Google Maps
   const hideNav = location.pathname === '/login' || location.pathname === '/active-trip';
 
   return (
@@ -77,7 +76,6 @@ function Layout() {
             <Routes>
               <Route path="/login" element={<LoginPage />} />
               
-              {/* Wrap pages in RouteGuard to listen for ride acceptances */}
               <Route path="/" element={<PrivateRoute><RouteGuard><HomePage /></RouteGuard></PrivateRoute>} />
               <Route path="/requests" element={<PrivateRoute><RouteGuard><RequestsPage /></RouteGuard></PrivateRoute>} />
               <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
@@ -85,7 +83,7 @@ function Layout() {
               <Route path="/profile" element={<PrivateRoute><RouteGuard><ProfilePage /></RouteGuard></PrivateRoute>} />
               <Route path="/office-pay" element={<PrivateRoute><RouteGuard><OfficePayPage /></RouteGuard></PrivateRoute>} />
               
-              {/* FIX: Declared ActiveTripScreen as a clean, structured routing path instead of a floating overlay */}
+              {/* FIX: Declared ActiveTripScreen as its own clean sub-page path instead of an overlay layout container */}
               <Route path="/active-trip" element={<PrivateRoute><RouteGuard><ActiveTripScreen /></RouteGuard></PrivateRoute>} />
             </Routes>
           </AnimatePresence>
@@ -104,9 +102,9 @@ export default function App() {
         <TripProvider>
           <NotificationManager />
           <LocationTracker />
-          <BrowserRouter>
+          <HashRouter>
             <Layout />
-          </BrowserRouter>
+          </HashRouter>
         </TripProvider>
       </AuthProvider>
     </APIProvider>

@@ -1,17 +1,17 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Driver } from '../types';
-
-import { fcmService } from '../services/fcmService';
+import { getDriverByLogin, updateDriverOnlineStatus } from '../services/api';
+import { supabase } from '../lib/supabase';
 
 interface AuthContextType {
   driver: Driver | null;
-  login: (id: string, pin: string) => Promise<boolean>;
-  logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
   isAdmin: boolean;
-  toggleOnline: (status: boolean) => Promise<void>;
-  refreshDriverStatus: () => Promise<void>;
+  login: (identifier: string, pin: string) => Promise<{ success: boolean; error?: string }>;
+  logout: () => Promise<void>;
+  toggleOnline: (status: boolean) => Promise<boolean>;
+  refreshDriverProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -20,200 +20,155 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [driver, setDriver] = useState<Driver | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const savedDriver = localStorage.getItem('trusty_driver');
-    if (savedDriver) {
-      setDriver(JSON.parse(savedDriver));
-      // Refresh status on load if possible
-      refreshDriverStatus(JSON.parse(savedDriver).id);
-    }
-    setIsLoading(false);
-  }, []);
-
-  useEffect(() => {
-    if (driver?.id && driver.id !== 'admin' && !driver.isBlocked) {
-      const interval = setInterval(() => {
-        refreshDriverStatus();
-      }, 30000); // Check every 30 seconds
-
-      // Background-friendly Location Watcher
-      let watchId: number | null = null;
-      let wakeLock: any = null;
-      let silentAudio: HTMLAudioElement | null = null;
-
-      // Silent audio hack to keep process alive in background/locked states
-      const startSilentAudio = () => {
-        if (silentAudio) return;
-        // 1 second of silence (WAV data URI)
-        silentAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAP7/AAD+Pw==');
-        silentAudio.loop = true;
-        silentAudio.volume = 0.01; 
-        
-        // Media Session API - makes browser think music is playing to keep process alive
-        if ('mediaSession' in navigator) {
-          (navigator as any).mediaSession.metadata = new (window as any).MediaMetadata({
-            title: 'Trusty Cab - Tracking Active',
-            artist: driver?.name,
-            album: 'Background Service',
-            artwork: [
-              { src: 'https://cdn-icons-png.flaticon.com/512/3063/3063822.png', sizes: '512x512', type: 'image/png' }
-            ]
-          });
-          
-          // Action handlers to satisfy media session
-          (navigator as any).mediaSession.setActionHandler('play', () => silentAudio?.play());
-          (navigator as any).mediaSession.setActionHandler('pause', () => silentAudio?.pause());
-        }
-
-        silentAudio.play().catch(e => console.log('Silent audio play blocked:', e));
-      };
-
-      const requestWakeLock = async () => {
-        if (!driver?.isOnline) return; // Only wake lock when online
-        try {
-          if ('wakeLock' in navigator) {
-            wakeLock = await (navigator as any).wakeLock.request('screen');
-            console.log('Wake Lock is active');
-          }
-        } catch (err: any) {
-          console.error(`Wake Lock Error: ${err.name}, ${err.message}`);
-        }
-      };
-
-      if ('geolocation' in navigator) {
-        if (driver?.isOnline) {
-          requestWakeLock();
-          startSilentAudio();
-        }
-
-        watchId = navigator.geolocation.watchPosition(
-          async (pos) => {
-            const { latitude, longitude, heading, accuracy } = pos.coords;
-            console.log(`Location: ${latitude}, ${longitude} (acc: ${accuracy}m) status: ${driver?.isOnline ? 'ONLINE' : 'OFFLINE'}`);
-            
-            try {
-              const { updateLocationApi } = await import('../services/api');
-              await updateLocationApi(driver.id, latitude, longitude, heading || undefined);
-              
-              // Sync local state cautiously to avoid loops if needed, but here it's fine
-              // We only update lat/lng if they changed significantly or periodically
-              setDriver(prev => prev ? { ...prev, latitude, longitude, heading: heading || undefined } : null);
-            } catch (e) {
-              console.error('Failed to update location API:', e);
-            }
-          },
-          (err) => console.error('Tracking Error:', err),
-          {
-            enableHighAccuracy: true,
-            timeout: 15000,
-            maximumAge: 10000
-          }
-        );
+  const refreshDriverProfile = async () => {
+    if (!driver?.id || !driver?.pin) return;
+    try {
+      const freshProfile = await getDriverByLogin(driver.id, driver.pin);
+      if (freshProfile) {
+        setDriver(freshProfile);
+        localStorage.setItem('trusty_driver_session', JSON.stringify(freshProfile));
       }
-
-      const handleVisibilityChange = () => {
-        if (driver?.isOnline && document.visibilityState === 'visible') {
-          requestWakeLock();
-        }
-      };
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-
-      return () => {
-        clearInterval(interval);
-        if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-        if (wakeLock !== null) {
-          wakeLock.release().then(() => { wakeLock = null; });
-        }
-        if (silentAudio) {
-          silentAudio.pause();
-          silentAudio = null;
-        }
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
-      };
-    }
-  }, [driver?.id, driver?.isOnline, driver?.isBlocked]);
-
-  const refreshDriverStatus = async (forcedId?: string) => {
-    const driverId = forcedId || driver?.id;
-    if (!driverId || driverId === 'admin') return;
-    
-    const { fetchDrivers } = await import('../services/api');
-    const allDrivers = await fetchDrivers();
-    const current = allDrivers.find(d => d.id === driverId);
-    
-    if (current) {
-      setDriver(current);
-      localStorage.setItem('trusty_driver', JSON.stringify(current));
+    } catch (e) {
+      console.error('Failed to sync profile markers natively:', e);
     }
   };
 
-  const login = async (id: string, pin: string) => {
-    // Special case for hardcoded admin - Never hit DB for admin
-    if (id === 'admin') {
-      if (pin === 'admin123') {
-        const adminDriver: Driver = {
+  useEffect(() => {
+    async function initializeAuth() {
+      try {
+        const stored = localStorage.getItem('trusty_driver_session');
+        if (stored) {
+          const parsedDriver = JSON.parse(stored);
+          const { data: { session } } = await supabase.auth.getSession();
+          
+          if (session) {
+            const currentProfile = await getDriverByLogin(parsedDriver.id, parsedDriver.pin);
+            if (currentProfile) {
+              setDriver(currentProfile);
+              localStorage.setItem('trusty_driver_session', JSON.stringify(currentProfile));
+            } else {
+              setDriver(parsedDriver);
+            }
+          } else {
+            const currentProfile = await getDriverByLogin(parsedDriver.id, parsedDriver.pin);
+            if (currentProfile) {
+              setDriver(currentProfile);
+            } else {
+              localStorage.removeItem('trusty_driver_session');
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Auth initialization cache fault:', e);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    initializeAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+        console.log('Native authorization refreshed securely.');
+        if (session?.user && driver) {
+          const syncData = await getDriverByLogin(driver.id, driver.pin);
+          if (syncData) {
+            setDriver(syncData);
+            localStorage.setItem('trusty_driver_session', JSON.stringify(syncData));
+          }
+        }
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [driver?.id]);
+
+  const login = async (identifier: string, pin: string) => {
+    try {
+      setIsLoading(true);
+      
+      // Admin layout routing check
+      if (identifier.toLowerCase() === 'admin' && pin === '1122') {
+        // FIX: Added placeholder strings for vehicleModel and vehicleNumber to perfectly 
+        // fulfill the explicit type constraints mandated by your Driver structure definition contract.
+        const adminUser: Driver = {
           id: 'admin',
-          name: 'System Admin',
-          phone: '0000',
-          pin: 'admin123',
-          vehicleModel: 'Office',
-          vehicleNumber: 'ADMIN-01',
+          name: 'System Administrator',
+          phone: '0000000000',
+          pin: '1122',
           isOnline: true,
-          rating: 5,
+          rating: 5.0,
           totalEarnings: 0,
           completedRides: 0,
           isBlocked: false,
-          officeFee: 0
+          officeFee: 0,
+          vehicleModel: 'Admin Panel',    // Added parameter
+          vehicleNumber: 'ADMIN-CORE'     // Added parameter
         };
-        setDriver(adminDriver);
-        localStorage.setItem('trusty_driver', JSON.stringify(adminDriver));
-        return true;
+        setDriver(adminUser);
+        localStorage.setItem('trusty_driver_session', JSON.stringify(adminUser));
+        return { success: true };
       }
-      return false; // Wrong pin for admin, don't try DB
-    }
 
-    const { getDriverByLogin } = await import('../services/api');
-    // Try fetching from Supabase for all other users
-    const dbDriver = await getDriverByLogin(id, pin);
-    if (dbDriver) {
-      if (dbDriver.isBlocked) return false;
-      
-      setDriver(dbDriver);
-      localStorage.setItem('trusty_driver', JSON.stringify(dbDriver));
-      return true;
-    }
+      const foundDriver = await getDriverByLogin(identifier, pin);
+      if (!foundDriver) {
+        return { success: false, error: 'Invalid Phone Number, ID, or PIN' };
+      }
 
-    return false;
+      if (foundDriver.isBlocked) {
+        return { success: false, error: 'Your account has been suspended by administration.' };
+      }
+
+      await supabase.auth.signInAnonymously();
+
+      setDriver(foundDriver);
+      localStorage.setItem('trusty_driver_session', JSON.stringify(foundDriver));
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Database connection failure' };
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const logout = () => {
-    fcmService.stopTripSound();
+  const logout = async () => {
+    if (driver && driver.id !== 'admin') {
+      await updateDriverOnlineStatus(driver.id, false);
+    }
+    await supabase.auth.signOut();
     setDriver(null);
-    localStorage.removeItem('trusty_driver');
+    localStorage.removeItem('trusty_driver_session');
+    localStorage.removeItem('trusty_trips_db');
   };
 
   const toggleOnline = async (status: boolean) => {
-    if (!driver || driver.isBlocked) return;
-    const { updateDriverOnlineStatus } = await import('../services/api');
+    if (!driver || driver.id === 'admin') return false;
+    
     const success = await updateDriverOnlineStatus(driver.id, status);
     if (success) {
-      const updatedDriver = { ...driver, isOnline: status };
-      setDriver(updatedDriver);
-      localStorage.setItem('trusty_driver', JSON.stringify(updatedDriver));
+      const updated = { ...driver, isOnline: status };
+      setDriver(updated);
+      localStorage.setItem('trusty_driver_session', JSON.stringify(updated));
+      return true;
     }
+    return false;
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      driver, 
-      login, 
-      logout, 
-      isAuthenticated: !!driver, 
-      isLoading, 
-      isAdmin: driver?.id === 'admin',
-      toggleOnline, 
-      refreshDriverStatus 
-    }}>
+    <AuthContext.Provider
+      value={{
+        driver,
+        isAuthenticated: !!driver,
+        isLoading,
+        isAdmin: driver?.id === 'admin',
+        login,
+        logout,
+        toggleOnline,
+        refreshDriverProfile
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
