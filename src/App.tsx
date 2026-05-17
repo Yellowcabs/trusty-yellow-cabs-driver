@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { cn } from './lib/utils';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence } from 'motion/react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { TripProvider, useTrips } from './context/TripContext';
@@ -33,19 +33,40 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// FIX: Native Redirect Guard Component. This monitors real-time context database 
+// updates and routes the driver exactly where they need to be, bypassing UI freeze scenarios.
+function RouteGuard({ children }: { children: React.ReactNode }) {
+  const { activeTrip } = useTrips();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    const isAdminPage = location.pathname === '/admin';
+    // If a trip becomes active, immediately break out of the list route and push the map page path
+    if (activeTrip && !isAdminPage && location.pathname !== '/active-trip') {
+      navigate('/active-trip', { replace: true });
+    }
+    // If a trip ends, securely push the driver back to the main home area
+    else if (!activeTrip && location.pathname === '/active-trip') {
+      navigate('/', { replace: true });
+    }
+  }, [activeTrip, location.pathname, navigate]);
+
+  return <>{children}</>;
+}
+
 function Layout() {
   const location = useLocation();
-  const { activeTrip } = useTrips();
-  const hideNav = location.pathname === '/login';
-  const isAdminPage = location.pathname === '/admin';
+  const hideNav = location.pathname === '/login' || location.pathname === '/active-trip';
 
   return (
     <div className="min-h-screen bg-neutral-50 relative overflow-hidden flex flex-col md:flex-row">
+      {/* Hide navigation entirely during active trips to maximize map viewport workspace */}
       {!hideNav && <BottomNav />}
       
       <main className={cn(
         "flex-1 w-full transition-all duration-150",
-        "!hideNav && md:ml-64 p-0"
+        !hideNav && "md:ml-64 p-0"
       )}>
         <div className={cn(
           "mx-auto",
@@ -54,34 +75,25 @@ function Layout() {
           <AnimatePresence mode="wait">
             <Routes>
               <Route path="/login" element={<LoginPage />} />
-              <Route path="/" element={<PrivateRoute><HomePage /></PrivateRoute>} />
-              <Route path="/requests" element={<PrivateRoute><RequestsPage /></PrivateRoute>} />
+              {/* Wrapped driver pages inside our explicit native state layout RouteGuard */}
+              <Route path="/" element={<PrivateRoute><RouteGuard><HomePage /></RouteGuard></PrivateRoute>} />
+              <Route path="/requests" element={<PrivateRoute><RouteGuard><RequestsPage /></RouteGuard></PrivateRoute>} />
               <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
-              <Route path="/history" element={<PrivateRoute><HistoryPage /></PrivateRoute>} />
-              <Route path="/profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
-              <Route path="/office-pay" element={<PrivateRoute><OfficePayPage /></PrivateRoute>} />
+              <Route path="/history" element={<PrivateRoute><RouteGuard><HistoryPage /></RouteGuard></PrivateRoute>} />
+              <Route path="/profile" element={<PrivateRoute><RouteGuard><ProfilePage /></RouteGuard></PrivateRoute>} />
+              <Route path="/office-pay" element={<PrivateRoute><RouteGuard><OfficePayPage /></RouteGuard></PrivateRoute>} />
+              
+              {/* FIX: Moved ActiveTripScreen into its own clean routing path instead of a floating fixed viewport overlay */}
+              <Route path="/active-trip" element={<PrivateRoute><RouteGuard><ActiveTripScreen /></RouteGuard></PrivateRoute>} />
             </Routes>
           </AnimatePresence>
         </div>
       </main>
-      
-      {/* Active Trip Overlay - Persistent Native Implementation */}
-      <AnimatePresence>
-         {activeTrip && !isAdminPage && (
-           <div className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-             <div className="w-full max-w-lg bg-neutral-50 rounded-[32px] overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-150">
-               <ActiveTripScreen />
-             </div>
-           </div>
-         )}
-      </AnimatePresence>
     </div>
   );
 }
 
 export default function App() {
-  // FIX: Removed desktop Node.js 'process.env' check which throws fatal reference crashes in native APK engines.
-  // Falls back gracefully to your standard mobile build environment configuration parameters.
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
   
   return (
