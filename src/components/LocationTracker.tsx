@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { updateLocationApi } from '../services/api';
+// 1. Import Geolocation from Capacitor instead of using navigator.geolocation
+import { Geolocation, Position } from '@capacitor/geolocation';
 
 export function LocationTracker() {
   const { driver, isAdmin } = useAuth();
@@ -15,7 +17,8 @@ export function LocationTracker() {
       return;
     }
 
-    let watchId: number | null = null;
+    // Capacitor tracking uses a string id instead of a number
+    let watchId: string | null = null;
     let wakeLock: any = null;
 
     const requestWakeLock = async () => {
@@ -30,7 +33,10 @@ export function LocationTracker() {
       }
     };
 
-    const handleLocationChange = (position: GeolocationPosition) => {
+    // 2. Adjust handler to match Capacitor's callback type
+    const handleLocationChange = (position: Position | null) => {
+      if (!position) return;
+      
       const now = Date.now();
       const { latitude, longitude, heading, accuracy: locAccuracy } = position.coords;
       
@@ -50,24 +56,59 @@ export function LocationTracker() {
       }
     };
 
-    const handleError = (error: GeolocationPositionError) => {
-      console.error('Location error:', error.message);
-      if (error.code === error.PERMISSION_DENIED) {
-        setAccuracy(-2); // Specific permission error
-      } else {
+    const handleError = (error: any) => {
+      console.error('Location error:', error?.message || error);
+      setAccuracy(-1);
+    };
+
+    // 3. Native function to request runtime permissions and start watching
+    const startNativeTracking = async () => {
+      try {
+        // Check current native permission status
+        const permStatus = await Geolocation.checkPermissions();
+        
+        let locationPermission = permStatus.location;
+
+        // If not granted, trigger the native Android pop-up permission dialog
+        if (locationPermission !== 'granted') {
+          const requestStatus = await Geolocation.requestPermissions({
+            permissions: ['location']
+          });
+          locationPermission = requestStatus.location;
+        }
+
+        if (locationPermission !== 'granted') {
+          console.error("Location permission denied by driver.");
+          setAccuracy(-2); // Specific permission error
+          alert("This taxi driver application requires GPS location permissions to track and receive ride requests.");
+          return;
+        }
+
+        // Native watch position setup
+        watchId = await Geolocation.watchPosition(
+          {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 0
+          },
+          (position, err) => {
+            if (err) {
+              handleError(err);
+            } else {
+              handleLocationChange(position);
+            }
+          }
+        );
+
+        requestWakeLock();
+      } catch (err) {
+        console.error("Error setting up native geolocation tracking:", err);
         setAccuracy(-1);
       }
     };
 
-    // Start tracking with high accuracy settings optimized for mobile
-    if ('geolocation' in navigator) {
-      watchId = navigator.geolocation.watchPosition(handleLocationChange, handleError, {
-        enableHighAccuracy: true,
-        timeout: 15000, // Slightly longer timeout for deep building starts
-        maximumAge: 0   // Force fresh GPS data, no caching
-      });
-      requestWakeLock();
-    }
+    // Initialize the permission check and tracker
+    startNativeTracking();
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -77,7 +118,10 @@ export function LocationTracker() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      // 4. Use Capacitor's native method to clear tracking
+      if (watchId !== null) {
+        Geolocation.clearWatch({ id: watchId }).catch(err => console.error(err));
+      }
       if (wakeLock !== null && wakeLock.release) {
         try { wakeLock.release(); } catch(e) {}
       }
