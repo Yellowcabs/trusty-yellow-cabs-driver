@@ -33,8 +33,8 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// FIX: Native Redirect Guard Component. This monitors real-time context database 
-// updates and routes the driver exactly where they need to be, bypassing UI freeze scenarios.
+// FIX: Native Redirect Guard. This monitors real-time database state 
+// and seamlessly routes the driver to the correct screen inside the APK.
 function RouteGuard({ children }: { children: React.ReactNode }) {
   const { activeTrip } = useTrips();
   const navigate = useNavigate();
@@ -42,11 +42,12 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const isAdminPage = location.pathname === '/admin';
-    // If a trip becomes active, immediately break out of the list route and push the map page path
+    
+    // The moment a trip becomes active, route directly to the active-trip page path
     if (activeTrip && !isAdminPage && location.pathname !== '/active-trip') {
       navigate('/active-trip', { replace: true });
     }
-    // If a trip ends, securely push the driver back to the main home area
+    // If a trip finishes or is cancelled, safely return the driver home
     else if (!activeTrip && location.pathname === '/active-trip') {
       navigate('/', { replace: true });
     }
@@ -57,11 +58,11 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
 
 function Layout() {
   const location = useLocation();
+  // Hide the navigation bar entirely during active trips to give full screen space to Google Maps
   const hideNav = location.pathname === '/login' || location.pathname === '/active-trip';
 
   return (
     <div className="min-h-screen bg-neutral-50 relative overflow-hidden flex flex-col md:flex-row">
-      {/* Hide navigation entirely during active trips to maximize map viewport workspace */}
       {!hideNav && <BottomNav />}
       
       <main className={cn(
@@ -75,7 +76,8 @@ function Layout() {
           <AnimatePresence mode="wait">
             <Routes>
               <Route path="/login" element={<LoginPage />} />
-              {/* Wrapped driver pages inside our explicit native state layout RouteGuard */}
+              
+              {/* Wrap pages in RouteGuard to listen for ride acceptances */}
               <Route path="/" element={<PrivateRoute><RouteGuard><HomePage /></RouteGuard></PrivateRoute>} />
               <Route path="/requests" element={<PrivateRoute><RouteGuard><RequestsPage /></RouteGuard></PrivateRoute>} />
               <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
@@ -83,7 +85,7 @@ function Layout() {
               <Route path="/profile" element={<PrivateRoute><RouteGuard><ProfilePage /></RouteGuard></PrivateRoute>} />
               <Route path="/office-pay" element={<PrivateRoute><RouteGuard><OfficePayPage /></RouteGuard></PrivateRoute>} />
               
-              {/* FIX: Moved ActiveTripScreen into its own clean routing path instead of a floating fixed viewport overlay */}
+              {/* FIX: Declared ActiveTripScreen as a clean, structured routing path instead of a floating overlay */}
               <Route path="/active-trip" element={<PrivateRoute><RouteGuard><ActiveTripScreen /></RouteGuard></PrivateRoute>} />
             </Routes>
           </AnimatePresence>
