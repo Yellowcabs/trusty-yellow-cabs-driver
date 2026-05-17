@@ -1,139 +1,93 @@
 /**
  * GOOGLE APPS SCRIPT (Copy this into your Google Apps Script associated with the Sheet)
- * 
- * const SPREADSHEET_ID = 'YOUR_SPREADSHEET_ID';
- * 
- * function doGet(e) {
- *   const action = e.parameter.action;
- *   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
- *   
- *   if (action === 'getTrips') {
- *     const sheet = ss.getSheetByName('Trips');
- *     const data = sheet.getDataRange().getValues();
- *     const headers = data.shift();
- *     const trips = data.map(row => {
- *       const trip = {};
- *       headers.forEach((h, i) => trip[h] = row[i]);
- *       return trip;
- *     });
- *     return ContentService.createTextOutput(JSON.stringify(trips)).setMimeType(ContentService.MimeType.JSON);
- *   }
- *   
- *   if (action === 'getDrivers') {
- *     const sheet = ss.getSheetByName('Drivers');
- *     const data = sheet.getDataRange().getValues();
- *     const headers = data.shift();
- *     const drivers = data.map(row => {
- *       const d = {};
- *       headers.forEach((h, i) => d[h] = row[i]);
- *       return d;
- *     });
- *     return ContentService.createTextOutput(JSON.stringify(drivers)).setMimeType(ContentService.MimeType.JSON);
- *   }
- *   
- *   // Handle post actions (accept, update status, etc) via doPost or doGet with action param
+ * * const SPREADSHEET_ID = 'YOUR_SPREADSHEET_ID';
+ * * function doGet(e) {
+ * const action = e.parameter.action;
+ * const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+ * * if (action === 'getTrips') {
+ * const sheet = ss.getSheetByName('Trips');
+ * const data = sheet.getDataRange().getValues();
+ * const headers = data.shift();
+ * const trips = data.map(row => {
+ * const trip = {};
+ * headers.forEach((h, i) => trip[h] = row[i]);
+ * return trip;
+ * });
+ * return ContentService.createTextOutput(JSON.stringify(trips)).setMimeType(ContentService.MimeType.JSON);
+ * }
+ * * if (action === 'getDrivers') {
+ * const sheet = ss.getSheetByName('Drivers');
+ * const data = sheet.getDataRange().getValues();
+ * const headers = data.shift();
+ * const drivers = data.map(row => {
+ * const d = {};
+ * headers.forEach((h, i) => d[h] = row[i]);
+ * return d;
+ * });
+ * return ContentService.createTextOutput(JSON.stringify(drivers)).setMimeType(ContentService.MimeType.JSON);
+ * }
+ * * // Handle post actions (accept, update status, etc) via doPost or doGet with action param
  * }
  */
 
 import { Trip, Driver } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+// FIX: Import getBaseUrl to point absolute paths to the backend server inside APK
+import { getBaseUrl } from '../lib/config';
 
 /**
  * SUPABASE SQL SCHEMA (Run this in Supabase SQL Editor)
- * 
- * -- 1. Trips Table
+ * * -- 1. Trips Table
  * CREATE TABLE trips (
- *   id TEXT PRIMARY KEY,
- *   pickup TEXT NOT NULL,
- *   pickup_lat DOUBLE PRECISION,
- *   pickup_lng DOUBLE PRECISION,
- *   "drop" TEXT NOT NULL,
- *   drop_lat DOUBLE PRECISION,
- *   drop_lng DOUBLE PRECISION,
- *   customer_name TEXT NOT NULL,
- *   customer_phone TEXT NOT NULL,
- *   fare NUMERIC NOT NULL,
- *   base_fare NUMERIC,
- *   kms_fare NUMERIC,
- *   distance TEXT,
- *   ride_type TEXT,
- *   status TEXT DEFAULT 'PENDING',
- *   driver_id TEXT,
- *   rejected_by TEXT[] DEFAULT '{}',
- *   released_by JSONB DEFAULT '[]',
- *   timestamp TIMESTAMPTZ DEFAULT NOW(),
- *   start_time TIMESTAMPTZ,
- *   end_time TIMESTAMPTZ,
- *   actual_start_lat DOUBLE PRECISION,
- *   actual_start_lng DOUBLE PRECISION,
- *   actual_end_lat DOUBLE PRECISION,
- *   actual_end_lng DOUBLE PRECISION,
- *   actual_distance NUMERIC,
- *   target_location_only BOOLEAN DEFAULT FALSE,
- *   target_radius INTEGER DEFAULT 5
+ * id TEXT PRIMARY KEY,
+ * pickup TEXT NOT NULL,
+ * pickup_lat DOUBLE PRECISION,
+ * pickup_lng DOUBLE PRECISION,
+ * "drop" TEXT NOT NULL,
+ * drop_lat DOUBLE PRECISION,
+ * drop_lng DOUBLE PRECISION,
+ * customer_name TEXT NOT NULL,
+ * customer_phone TEXT NOT NULL,
+ * fare NUMERIC NOT NULL,
+ * base_fare NUMERIC,
+ * kms_fare NUMERIC,
+ * distance TEXT,
+ * ride_type TEXT,
+ * status TEXT DEFAULT 'PENDING',
+ * driver_id TEXT,
+ * rejected_by TEXT[] DEFAULT '{}',
+ * released_by JSONB DEFAULT '[]',
+ * timestamp TIMESTAMPTZ DEFAULT NOW(),
+ * start_time TIMESTAMPTZ,
+ * end_time TIMESTAMPTZ,
+ * actual_start_lat DOUBLE PRECISION,
+ * actual_start_lng DOUBLE PRECISION,
+ * actual_end_lat DOUBLE PRECISION,
+ * actual_end_lng DOUBLE PRECISION,
+ * actual_distance NUMERIC,
+ * target_location_only BOOLEAN DEFAULT FALSE,
+ * target_radius INTEGER DEFAULT 5
  * );
- * 
- * -- Update existing table if needed:
- * -- ALTER TABLE trips ADD COLUMN actual_start_lat DOUBLE PRECISION;
- * -- ALTER TABLE trips ADD COLUMN actual_start_lng DOUBLE PRECISION;
- * -- ALTER TABLE trips ADD COLUMN actual_end_lat DOUBLE PRECISION;
- * -- ALTER TABLE trips ADD COLUMN actual_end_lng DOUBLE PRECISION;
- * -- ALTER TABLE trips ADD COLUMN actual_distance NUMERIC;
- * -- ALTER TABLE trips ADD COLUMN pickup_lat DOUBLE PRECISION;
- * -- ALTER TABLE trips ADD COLUMN pickup_lng DOUBLE PRECISION;
- * -- ALTER TABLE trips ADD COLUMN drop_lat DOUBLE PRECISION;
- * -- ALTER TABLE trips ADD COLUMN drop_lng DOUBLE PRECISION;
- * -- ALTER TABLE trips ADD COLUMN target_location_only BOOLEAN DEFAULT FALSE;
- * -- ALTER TABLE trips ADD COLUMN target_radius INTEGER DEFAULT 5;
- * 
- * -- 2. Drivers Table
+ * * -- 2. Drivers Table
  * CREATE TABLE drivers (
- *   id TEXT PRIMARY KEY,
- *   name TEXT NOT NULL,
- *   phone TEXT UNIQUE NOT NULL,
- *   pin TEXT NOT NULL,
- *   vehicle_model TEXT,
- *   vehicle_number TEXT,
- *   is_online BOOLEAN DEFAULT FALSE,
- *   rating NUMERIC DEFAULT 5.0,
- *   total_earnings NUMERIC DEFAULT 0,
- *   completed_rides INTEGER DEFAULT 0,
- *   avatar_url TEXT,
- *   is_blocked BOOLEAN DEFAULT FALSE,
- *   office_fee NUMERIC DEFAULT 0,
- *   latitude DOUBLE PRECISION,
- *   longitude DOUBLE PRECISION,
- *   last_seen TIMESTAMPTZ,
- *   created_at TIMESTAMPTZ DEFAULT NOW()
+ * id TEXT PRIMARY KEY,
+ * name TEXT NOT NULL,
+ * phone TEXT UNIQUE NOT NULL,
+ * pin TEXT NOT NULL,
+ * vehicle_model TEXT,
+ * vehicle_number TEXT,
+ * is_online BOOLEAN DEFAULT FALSE,
+ * rating NUMERIC DEFAULT 5.0,
+ * total_earnings NUMERIC DEFAULT 0,
+ * completed_rides INTEGER DEFAULT 0,
+ * avatar_url TEXT,
+ * is_blocked BOOLEAN DEFAULT FALSE,
+ * office_fee NUMERIC DEFAULT 0,
+ * latitude DOUBLE PRECISION,
+ * longitude DOUBLE PRECISION,
+ * last_seen TIMESTAMPTZ,
+ * created_at TIMESTAMPTZ DEFAULT NOW()
  * );
- * 
- * -- Update existing table if needed:
- * -- ALTER TABLE drivers ADD COLUMN IF NOT EXISTS office_fee NUMERIC DEFAULT 0;
- * -- ALTER TABLE drivers ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
- * -- ALTER TABLE drivers ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
- * -- ALTER TABLE drivers ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ;
- * 
- * -- 3. Row Level Security (RLS) Policies
- * -- Run these to fix the "violates row-level security policy" error
- * ALTER TABLE drivers ENABLE ROW LEVEL SECURITY;
- * ALTER TABLE trips ENABLE ROW LEVEL SECURITY;
- * 
- * -- Drivers Policies
- * CREATE POLICY "Public read drivers" ON drivers FOR SELECT USING (true);
- * CREATE POLICY "Public insert drivers" ON drivers FOR INSERT WITH CHECK (true);
- * CREATE POLICY "Public update drivers" ON drivers FOR UPDATE USING (true);
- * 
- * -- Trips Policies
- * CREATE POLICY "Public read trips" ON trips FOR SELECT USING (true);
- * CREATE POLICY "Public insert trips" ON trips FOR INSERT WITH CHECK (true);
- * CREATE POLICY "Public update trips" ON trips FOR UPDATE USING (true);
- * CREATE POLICY "Public delete trips" ON trips FOR DELETE USING (true);
- * 
- * -- Add office_fee to existing drivers table
- * ALTER TABLE drivers ADD COLUMN IF NOT EXISTS office_fee NUMERIC DEFAULT 0;
- * 
- * -- Add fcm_token to drivers table for push notifications
- * ALTER TABLE drivers ADD COLUMN IF NOT EXISTS fcm_token TEXT;
  */
 
 export async function fetchTrips(filters?: { status?: Trip['status']; driverId?: string; limit?: number }): Promise<Trip[]> {
@@ -144,7 +98,8 @@ export async function fetchTrips(filters?: { status?: Trip['status']; driverId?:
     if (filters?.limit) params.append('limit', filters.limit.toString());
     
     const queryStr = params.toString();
-    const url = `/api/trips${queryStr ? '?' + queryStr : ''}`;
+    // FIX: Prepended getBaseUrl() to make sure APK points to external production endpoint rather than local sandbox
+    const url = `${getBaseUrl()}/api/trips${queryStr ? '?' + queryStr : ''}`;
 
     // Try to fetch from backend first
     const response = await fetch(url);
@@ -257,8 +212,8 @@ export async function createTripApi(trip: Omit<Trip, 'id' | 'status' | 'timestam
       target_radius: trip.targetRadius || 5
     };
 
-    // Try backend first
-    const response = await fetch('/api/trips', {
+    // FIX: Changed fetch to include getBaseUrl() for runtime native environment mapping
+    const response = await fetch(`${getBaseUrl()}/api/trips`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newTripRow)
@@ -382,7 +337,6 @@ export async function rejectTripApi(tripId: string, driverId: string, currentRej
     const timestamp = Date.now().toString();
     const rejectionEntry = `${driverId}|${timestamp}`;
     
-    // Remove any existing rejection entry for this driver (handle both old plain ID and new ID|timestamp)
     const filteredRejections = (currentRejectedBy || []).filter(entry => {
       const entryId = entry.includes('|') ? entry.split('|')[0] : entry;
       return entryId !== driverId;
@@ -427,7 +381,8 @@ export async function fetchDrivers(filters?: { isOnline?: boolean; search?: stri
     if (filters?.limit) params.append('limit', filters.limit.toString());
     
     const queryStr = params.toString();
-    const url = `/api/drivers${queryStr ? '?' + queryStr : ''}`;
+    // FIX: Prepend getBaseUrl() for safe remote routing
+    const url = `${getBaseUrl()}/api/drivers${queryStr ? '?' + queryStr : ''}`;
 
     // Try to fetch from backend first
     const response = await fetch(url);
@@ -548,8 +503,8 @@ export async function createDriverApi(driverData: Omit<Driver, 'rating' | 'total
 
 export async function updateDriverOnlineStatus(driverId: string, isOnline: boolean): Promise<boolean> {
   try {
-    // Try backend first
-    const response = await fetch(`/api/drivers/${driverId}/online`, {
+    // FIX: Prepend getBaseUrl() for safe remote request routing
+    const response = await fetch(`${getBaseUrl()}/api/drivers/${driverId}/online`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ isOnline })
@@ -576,7 +531,6 @@ export async function updateDriverOnlineStatus(driverId: string, isOnline: boole
 export async function getDriverByLogin(identifier: string, pin: string): Promise<Driver | null> {
   try {
     if (!isSupabaseConfigured) return null;
-    // Try login by ID
     let { data, error } = await supabase
       .from('drivers')
       .select('*')
@@ -584,7 +538,6 @@ export async function getDriverByLogin(identifier: string, pin: string): Promise
       .eq('pin', pin)
       .single();
 
-    // If ID fails, try login by Phone
     if (error || !data) {
       const { data: phoneData, error: phoneError } = await supabase
         .from('drivers')
@@ -660,7 +613,7 @@ export async function uploadDriverPhoto(file: File, driverId: string): Promise<s
     if (!isSupabaseConfigured) return null;
     const fileExt = file.name.split('.').pop();
     const fileName = `${driverId}-${Math.random()}.${fileExt}`;
-    const filePath = `${fileName}`; // Just put in root of bucket or a subfolder
+    const filePath = `${fileName}`; 
 
     const { error: uploadError } = await supabase.storage
       .from('avatars')
