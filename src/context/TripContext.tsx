@@ -29,10 +29,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   const lastTripIdRef = useRef<string | null>(null);
 
   const showNotification = useCallback((trip: any) => {
-    // FIX: Skip standard web-browser push elements if running inside an Android APK WebView container
-    // to prevent freezing or crashing the JavaScript runtime environment thread on active trip changes.
+    // FIX: Skip browser elements inside Android APK to prevent execution blocks
     if (typeof window !== 'undefined' && window.location.origin.includes('localhost')) {
-      console.log('Skipping web notification architecture inside native Android APK runtime environment.');
       return;
     }
 
@@ -50,7 +48,6 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       try {
         if (Notification.permission === 'granted') {
-          // Try to show via service worker for better background support
           if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
             navigator.serviceWorker.ready.then(registration => {
               registration.showNotification(title, options);
@@ -64,10 +61,10 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
             };
           }
         } else if (Notification.permission !== 'denied') {
-          Notification.requestPermission().catch(err => console.warn('Notification prompt postponed:', err));
+          Notification.requestPermission().catch(err => console.warn(err));
         }
       } catch (e) {
-        console.warn('Web notification blocked or failed in this native environment:', e);
+        console.warn('Notification system sandboxed:', e);
       }
     }
   }, []);
@@ -83,7 +80,6 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     const pending = trips.filter(t => {
       if (t.status !== 'PENDING') return false;
       
-      // Location Based Assignment
       if (t.targetLocationOnly && t.pickupLat && t.pickupLng && driver?.latitude && driver?.longitude) {
         const distance = getDistance(t.pickupLat, t.pickupLng, driver.latitude, driver.longitude);
         if (distance > (t.targetRadius || 5)) return false;
@@ -91,7 +87,6 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       
       if (!t.rejectedBy || t.rejectedBy.length === 0) return true;
       
-      // Check if rejected by this driver and if the timeout (60s) has passed
       const myRejection = t.rejectedBy.find(entry => {
         const entryId = entry.includes('|') ? entry.split('|')[0] : entry;
         return entryId === driver.id;
@@ -144,6 +139,9 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     const combinedTrips = [...pending, ...assigned];
     const uniqueTrips = Array.from(new Map(combinedTrips.map(t => [t.id, t])).values());
     
+    // FIX: Force update localStorage cache with fresh server data to destroy offline storage mismatch hooks
+    localStorage.setItem('trusty_trips_db', JSON.stringify(uniqueTrips));
+    
     setAllTrips(uniqueTrips);
     updatePendingTrips(uniqueTrips);
     
@@ -157,7 +155,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     refreshTrips();
     
     if (!isSupabaseConfigured) {
-      const pollInterval = setInterval(refreshTrips, 30000);
+      const pollInterval = setInterval(refreshTrips, 30000); 
       return () => clearInterval(pollInterval);
     }
 
@@ -268,6 +266,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
           updatedTrips = updatedTrips.filter(t => t.id !== oldRecord.id);
         }
 
+        // FIX: Force synchronize updated array modifications down into storage cache layout
+        localStorage.setItem('trusty_trips_db', JSON.stringify(updatedTrips));
         updatePendingTrips(updatedTrips);
         
         const active = updatedTrips.find(t => t.driverId === driver.id && !['COMPLETED', 'CANCELLED'].includes(t.status));
@@ -322,6 +322,8 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     if (!driver || driver.isBlocked) return;
     const result = await updateTripStatus(tripId, 'ACCEPTED', driver.id);
     if (result.success) {
+      // FIX: Wipe previous local trip reference markers on success to unlock immediate page change execution
+      lastTripIdRef.current = null;
       await refreshTrips();
     }
   };
@@ -361,6 +363,10 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     if (!activeTrip || !driver || driver.isBlocked) return;
     const result = await updateTripStatus(activeTrip.id, status, driver.id, extraData);
     if (result.success) {
+      if (['COMPLETED', 'CANCELLED'].includes(status)) {
+        // FIX: Hard reset context variables when finishing trip to ensure next order doesn't lock up
+        setActiveTrip(null);
+      }
       await refreshTrips();
     }
   };
