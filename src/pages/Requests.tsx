@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-// FIX: Ensure useNavigate is imported to control screen transitions
+// FIX: Ensure useNavigate is explicitly pulled to redirect screens safely
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, Info, BellRing } from 'lucide-react';
@@ -10,17 +10,18 @@ import { fcmService } from '../services/fcmService';
 
 export function RequestsPage() {
   const { driver } = useAuth();
-  // FIX: Destructure activeTrip alongside pendingTrips from the TripContext
+  // FIX: Destructure activeTrip from your shared global Trip Context stream
   const { pendingTrips, activeTrip, acceptTrip, rejectTrip } = useTrips();
   const navigate = useNavigate();
   const [permission, setPermission] = React.useState(typeof Notification !== 'undefined' ? Notification.permission : 'denied');
 
-  // FIX: Add an automatic navigation guard hook. If this driver accepts a trip,
-  // or an admin assigns one, immediately redirect them to the active tracking layout.
+  // FIX: Add an automatic layout redirection hook. The moment the driver clicks 'Accept'
+  // and the backend updates, this effect triggers and returns the driver to the home root 
+  // screen path where the ActiveTrip overlay can safely execute without rendering collisions.
   useEffect(() => {
     if (activeTrip) {
-      console.log("Active trip verified in context. Routing driver to navigation dashboard.");
-      navigate('/'); // Routes back to the home structure which toggles the active track view
+      console.log('Trip match confirmed. Shifting viewport away from requests module.');
+      navigate('/', { replace: true });
     }
   }, [activeTrip, navigate]);
 
