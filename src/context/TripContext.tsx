@@ -29,7 +29,6 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   const lastTripIdRef = useRef<string | null>(null);
 
   const showNotification = useCallback((trip: any) => {
-    // FIX: Skip browser elements inside Android APK to prevent execution blocks
     if (typeof window !== 'undefined' && window.location.origin.includes('localhost')) {
       return;
     }
@@ -93,7 +92,6 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       });
       
       if (!myRejection) return true;
-      
       if (!myRejection.includes('|')) return false; 
       
       const [, timestampStr] = myRejection.split('|');
@@ -122,31 +120,34 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   const refreshTrips = useCallback(async () => {
     if (!driver) return;
 
-    let pending, assigned;
-    
-    if (driver.id === 'admin') {
-      [pending, assigned] = await Promise.all([
-        fetchTrips({ status: 'PENDING', limit: 100 }),
-        fetchTrips({ limit: 100 })
-      ]);
-    } else {
-      [pending, assigned] = await Promise.all([
-        fetchTrips({ status: 'PENDING', limit: 20 }),
-        fetchTrips({ driverId: driver.id, limit: 10 })
-      ]);
-    }
+    try {
+      let pending, assigned;
+      
+      if (driver.id === 'admin') {
+        [pending, assigned] = await Promise.all([
+          fetchTrips({ status: 'PENDING', limit: 100 }),
+          fetchTrips({ limit: 100 })
+        ]);
+      } else {
+        [pending, assigned] = await Promise.all([
+          fetchTrips({ status: 'PENDING', limit: 20 }),
+          fetchTrips({ driverId: driver.id, limit: 10 })
+        ]);
+      }
 
-    const combinedTrips = [...pending, ...assigned];
-    const uniqueTrips = Array.from(new Map(combinedTrips.map(t => [t.id, t])).values());
-    
-    // FIX: Force update localStorage cache with fresh server data to destroy offline storage mismatch hooks
-    localStorage.setItem('trusty_trips_db', JSON.stringify(uniqueTrips));
-    
-    setAllTrips(uniqueTrips);
-    updatePendingTrips(uniqueTrips);
-    
-    const active = uniqueTrips.find(t => t.driverId === driver.id && !['COMPLETED', 'CANCELLED'].includes(t.status));
-    setActiveTrip(active || null);
+      const combinedTrips = [...pending, ...assigned];
+      const uniqueTrips = Array.from(new Map(combinedTrips.map(t => [t.id, t])).values());
+      
+      localStorage.setItem('trusty_trips_db', JSON.stringify(uniqueTrips));
+      
+      setAllTrips(uniqueTrips);
+      updatePendingTrips(uniqueTrips);
+      
+      const active = uniqueTrips.find(t => t.driverId === driver.id && !['COMPLETED', 'CANCELLED'].includes(t.status));
+      setActiveTrip(active || null);
+    } catch (err) {
+      console.error('Error executing clean data refresh:', err);
+    }
   }, [driver, updatePendingTrips]);
 
   useEffect(() => {
@@ -160,121 +161,125 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     }
 
     const handleChanges = (payload: any) => {
-      const { eventType, new: newRecord, old: oldRecord } = payload;
-      
-      setAllTrips(prevTrips => {
-        let updatedTrips = [...prevTrips];
+      // FIX: Wrap state mapping inside a detached setTimeout callback.
+      // This prevents background real-time WebSocket threads from clashing with 
+      // React's core rendering thread inside the Android WebView container.
+      setTimeout(() => {
+        const { eventType, new: newRecord, old: oldRecord } = payload;
         
-        const isRelevant = 
-          driver.id === 'admin' || 
-          newRecord?.status === 'PENDING' || 
-          newRecord?.driver_id === driver.id ||
-          oldRecord?.status === 'PENDING' || 
-          oldRecord?.driver_id === driver.id;
+        setAllTrips(prevTrips => {
+          let updatedTrips = [...prevTrips];
+          
+          const isRelevant = 
+            driver.id === 'admin' || 
+            newRecord?.status === 'PENDING' || 
+            newRecord?.driver_id === driver.id ||
+            oldRecord?.status === 'PENDING' || 
+            oldRecord?.driver_id === driver.id;
 
-        if (!isRelevant) return prevTrips;
+          if (!isRelevant) return prevTrips;
 
-        if (eventType === 'INSERT') {
-          if (!updatedTrips.find(t => t.id === newRecord.id)) {
-            const mappedTrip: Trip = {
-              id: newRecord.id,
-              pickup: newRecord.pickup,
-              pickupLat: newRecord.pickup_lat,
-              pickupLng: newRecord.pickup_lng,
-              drop: newRecord.drop,
-              dropLat: newRecord.drop_lat,
-              dropLng: newRecord.drop_lng,
-              customerName: newRecord.customer_name,
-              customerPhone: newRecord.customer_phone,
-              fare: Number(newRecord.fare),
-              baseFare: newRecord.base_fare ? Number(newRecord.base_fare) : undefined,
-              kmsFare: newRecord.kms_fare ? Number(newRecord.kms_fare) : undefined,
-              distance: newRecord.distance,
-              rideType: newRecord.ride_type,
-              status: newRecord.status,
-              timestamp: newRecord.timestamp,
-              driverId: newRecord.driver_id,
-              rejectedBy: newRecord.rejected_by || [],
-              releasedBy: newRecord.released_by || [],
-              startTime: newRecord.start_time,
-              endTime: newRecord.end_time,
-              actualStartLat: newRecord.actual_start_lat,
-              actualStartLng: newRecord.actual_start_lng,
-              actualEndLat: newRecord.actual_end_lat,
-              actualEndLng: newRecord.actual_end_lng,
-              actualDistance: newRecord.actual_distance,
-              targetLocationOnly: newRecord.target_location_only,
-              targetRadius: newRecord.target_radius
-            };
-            updatedTrips = [mappedTrip, ...updatedTrips];
+          if (eventType === 'INSERT') {
+            if (!updatedTrips.find(t => t.id === newRecord.id)) {
+              const mappedTrip: Trip = {
+                id: newRecord.id,
+                pickup: newRecord.pickup,
+                pickupLat: newRecord.pickup_lat,
+                pickupLng: newRecord.pickup_lng,
+                drop: newRecord.drop,
+                dropLat: newRecord.drop_lat,
+                dropLng: newRecord.drop_lng,
+                customerName: newRecord.customer_name,
+                customerPhone: newRecord.customer_phone,
+                fare: Number(newRecord.fare),
+                baseFare: newRecord.base_fare ? Number(newRecord.base_fare) : undefined,
+                kmsFare: newRecord.kms_fare ? Number(newRecord.kms_fare) : undefined,
+                distance: newRecord.distance,
+                rideType: newRecord.ride_type,
+                status: newRecord.status,
+                timestamp: newRecord.timestamp,
+                driverId: newRecord.driver_id,
+                rejectedBy: newRecord.rejected_by || [],
+                releasedBy: newRecord.released_by || [],
+                startTime: newRecord.start_time,
+                endTime: newRecord.end_time,
+                actualStartLat: newRecord.actual_start_lat,
+                actualStartLng: newRecord.actual_start_lng,
+                actualEndLat: newRecord.actual_end_lat,
+                actualEndLng: newRecord.actual_end_lng,
+                actualDistance: newRecord.actual_distance,
+                targetLocationOnly: newRecord.target_location_only,
+                targetRadius: newRecord.target_radius
+              };
+              updatedTrips = [mappedTrip, ...updatedTrips];
+            }
+          } else if (eventType === 'UPDATE') {
+            const index = updatedTrips.findIndex(t => t.id === newRecord.id);
+            if (index !== -1) {
+              const mappedTrip: Trip = {
+                ...updatedTrips[index],
+                status: newRecord.status,
+                driverId: newRecord.driver_id,
+                fare: Number(newRecord.fare),
+                rejectedBy: newRecord.rejected_by || [],
+                releasedBy: newRecord.released_by || [],
+                startTime: newRecord.start_time,
+                endTime: newRecord.end_time,
+                actualStartLat: newRecord.actual_start_lat,
+                actualStartLng: newRecord.actual_start_lng,
+                actualEndLat: newRecord.actual_end_lat,
+                actualEndLng: newRecord.actual_end_lng,
+                actualDistance: newRecord.actual_distance,
+                targetLocationOnly: newRecord.target_location_only,
+                targetRadius: newRecord.target_radius
+              };
+              updatedTrips[index] = mappedTrip;
+            } else {
+              const mappedTrip: Trip = {
+                id: newRecord.id,
+                pickup: newRecord.pickup,
+                pickupLat: newRecord.pickup_lat,
+                pickupLng: newRecord.pickup_lng,
+                drop: newRecord.drop,
+                dropLat: newRecord.drop_lat,
+                dropLng: newRecord.drop_lng,
+                customerName: newRecord.customer_name,
+                customerPhone: newRecord.customer_phone,
+                fare: Number(newRecord.fare),
+                baseFare: newRecord.base_fare ? Number(newRecord.base_fare) : undefined,
+                kmsFare: newRecord.kms_fare ? Number(newRecord.kms_fare) : undefined,
+                distance: newRecord.distance,
+                rideType: newRecord.ride_type,
+                status: newRecord.status,
+                timestamp: newRecord.timestamp,
+                driverId: newRecord.driver_id,
+                rejectedBy: newRecord.rejected_by || [],
+                releasedBy: newRecord.released_by || [],
+                startTime: newRecord.start_time,
+                endTime: newRecord.end_time,
+                actualStartLat: newRecord.actual_start_lat,
+                actualStartLng: newRecord.actual_start_lng,
+                actualEndLat: newRecord.actual_end_lat,
+                actualEndLng: newRecord.actual_end_lng,
+                actualDistance: newRecord.actual_distance,
+                targetLocationOnly: newRecord.target_location_only,
+                targetRadius: newRecord.target_radius
+              };
+              updatedTrips = [mappedTrip, ...updatedTrips];
+            }
+          } else if (eventType === 'DELETE') {
+            updatedTrips = updatedTrips.filter(t => t.id !== oldRecord.id);
           }
-        } else if (eventType === 'UPDATE') {
-          const index = updatedTrips.findIndex(t => t.id === newRecord.id);
-          if (index !== -1) {
-            const mappedTrip: Trip = {
-              ...updatedTrips[index],
-              status: newRecord.status,
-              driverId: newRecord.driver_id,
-              fare: Number(newRecord.fare),
-              rejectedBy: newRecord.rejected_by || [],
-              releasedBy: newRecord.released_by || [],
-              startTime: newRecord.start_time,
-              endTime: newRecord.end_time,
-              actualStartLat: newRecord.actual_start_lat,
-              actualStartLng: newRecord.actual_start_lng,
-              actualEndLat: newRecord.actual_end_lat,
-              actualEndLng: newRecord.actual_end_lng,
-              actualDistance: newRecord.actual_distance,
-              targetLocationOnly: newRecord.target_location_only,
-              targetRadius: newRecord.target_radius
-            };
-            updatedTrips[index] = mappedTrip;
-          } else {
-            const mappedTrip: Trip = {
-              id: newRecord.id,
-              pickup: newRecord.pickup,
-              pickupLat: newRecord.pickup_lat,
-              pickupLng: newRecord.pickup_lng,
-              drop: newRecord.drop,
-              dropLat: newRecord.drop_lat,
-              dropLng: newRecord.drop_lng,
-              customerName: newRecord.customer_name,
-              customerPhone: newRecord.customer_phone,
-              fare: Number(newRecord.fare),
-              baseFare: newRecord.base_fare ? Number(newRecord.base_fare) : undefined,
-              kmsFare: newRecord.kms_fare ? Number(newRecord.kms_fare) : undefined,
-              distance: newRecord.distance,
-              rideType: newRecord.ride_type,
-              status: newRecord.status,
-              timestamp: newRecord.timestamp,
-              driverId: newRecord.driver_id,
-              rejectedBy: newRecord.rejected_by || [],
-              releasedBy: newRecord.released_by || [],
-              startTime: newRecord.start_time,
-              endTime: newRecord.end_time,
-              actualStartLat: newRecord.actual_start_lat,
-              actualStartLng: newRecord.actual_start_lng,
-              actualEndLat: newRecord.actual_end_lat,
-              actualEndLng: newRecord.actual_end_lng,
-              actualDistance: newRecord.actual_distance,
-              targetLocationOnly: newRecord.target_location_only,
-              targetRadius: newRecord.target_radius
-            };
-            updatedTrips = [mappedTrip, ...updatedTrips];
-          }
-        } else if (eventType === 'DELETE') {
-          updatedTrips = updatedTrips.filter(t => t.id !== oldRecord.id);
-        }
 
-        // FIX: Force synchronize updated array modifications down into storage cache layout
-        localStorage.setItem('trusty_trips_db', JSON.stringify(updatedTrips));
-        updatePendingTrips(updatedTrips);
-        
-        const active = updatedTrips.find(t => t.driverId === driver.id && !['COMPLETED', 'CANCELLED'].includes(t.status));
-        setActiveTrip(active || null);
-        
-        return updatedTrips;
-      });
+          localStorage.setItem('trusty_trips_db', JSON.stringify(updatedTrips));
+          updatePendingTrips(updatedTrips);
+          
+          const active = updatedTrips.find(t => t.driverId === driver.id && !['COMPLETED', 'CANCELLED'].includes(t.status));
+          setActiveTrip(active || null);
+          
+          return updatedTrips;
+        });
+      }, 0);
     };
 
     let channels: any[] = [];
@@ -322,9 +327,11 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     if (!driver || driver.isBlocked) return;
     const result = await updateTripStatus(tripId, 'ACCEPTED', driver.id);
     if (result.success) {
-      // FIX: Wipe previous local trip reference markers on success to unlock immediate page change execution
       lastTripIdRef.current = null;
-      await refreshTrips();
+      // FIX: Force a structural layout refresh inside a safe task callback loop
+      setTimeout(() => {
+        refreshTrips();
+      }, 50);
     }
   };
   
@@ -364,7 +371,6 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     const result = await updateTripStatus(activeTrip.id, status, driver.id, extraData);
     if (result.success) {
       if (['COMPLETED', 'CANCELLED'].includes(status)) {
-        // FIX: Hard reset context variables when finishing trip to ensure next order doesn't lock up
         setActiveTrip(null);
       }
       await refreshTrips();
