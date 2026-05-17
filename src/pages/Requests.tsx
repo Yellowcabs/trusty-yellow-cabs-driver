@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+// FIX: Ensure useNavigate is imported to control screen transitions
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, MapPin, Navigation, Info, BellRing } from 'lucide-react';
+import { Search, Info, BellRing } from 'lucide-react';
 import { useTrips } from '../context/TripContext';
 import { useAuth } from '../context/AuthContext';
 import { TripCard } from '../components/TripCard';
@@ -8,8 +10,19 @@ import { fcmService } from '../services/fcmService';
 
 export function RequestsPage() {
   const { driver } = useAuth();
-  const { pendingTrips, acceptTrip, rejectTrip } = useTrips();
+  // FIX: Destructure activeTrip alongside pendingTrips from the TripContext
+  const { pendingTrips, activeTrip, acceptTrip, rejectTrip } = useTrips();
+  const navigate = useNavigate();
   const [permission, setPermission] = React.useState(typeof Notification !== 'undefined' ? Notification.permission : 'denied');
+
+  // FIX: Add an automatic navigation guard hook. If this driver accepts a trip,
+  // or an admin assigns one, immediately redirect them to the active tracking layout.
+  useEffect(() => {
+    if (activeTrip) {
+      console.log("Active trip verified in context. Routing driver to navigation dashboard.");
+      navigate('/'); // Routes back to the home structure which toggles the active track view
+    }
+  }, [activeTrip, navigate]);
 
   if (driver?.isBlocked) {
     return (
@@ -29,7 +42,6 @@ export function RequestsPage() {
         }
       });
     }
-    // Explicitly unlock audio on user action
     fcmService.unlockAudio();
   };
 
@@ -40,22 +52,21 @@ export function RequestsPage() {
           <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">Near You</p>
           <h1 className="text-3xl font-black text-neutral-900">Trip Requests</h1>
         </div>
-      <div className="flex flex-col items-end gap-3">
+        <div className="flex flex-col items-end gap-3">
+          {permission !== "granted" && (
+            <button
+              onClick={requestPermission}
+              className="flex items-center gap-2 bg-white/90 backdrop-blur-md text-amber-600 px-4 py-2 rounded-2xl shadow-sm border border-amber-100 text-[11px] font-semibold active:scale-95 transition"
+            >
+              <BellRing size={16} className="text-amber-500" />
+              Enable Alerts
+            </button>
+          )}
 
-  {permission !== "granted" && (
-    <button
-      onClick={requestPermission}
-      className="flex items-center gap-2 bg-white/90 backdrop-blur-md text-amber-600 px-4 py-2 rounded-2xl shadow-sm border border-amber-100 text-[11px] font-semibold active:scale-95 transition"
-    >
-      <BellRing size={16} className="text-amber-500" />
-      Enable Alerts
-    </button>
-  )}
-
-  <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md text-emerald-600 px-4 py-2 rounded-2xl shadow-sm border border-emerald-100 text-[11px] font-semibold">
-    <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse" />
-    Active Radar
-  </div>
+          <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md text-emerald-600 px-4 py-2 rounded-2xl shadow-sm border border-emerald-100 text-[11px] font-semibold">
+            <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse" />
+            Active Radar
+          </div>
         </div>
       </header>
 
@@ -102,8 +113,6 @@ export function RequestsPage() {
           </div>
         )}
       </main>
-
-      {/* Notifications and Audio are handled by TripProvider context */}
     </div>
   );
 }

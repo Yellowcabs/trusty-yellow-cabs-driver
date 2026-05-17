@@ -29,6 +29,13 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   const lastTripIdRef = useRef<string | null>(null);
 
   const showNotification = useCallback((trip: any) => {
+    // FIX: Skip standard web-browser push elements if running inside an Android APK WebView container
+    // to prevent freezing or crashing the JavaScript runtime environment thread on active trip changes.
+    if (typeof window !== 'undefined' && window.location.origin.includes('localhost')) {
+      console.log('Skipping web notification architecture inside native Android APK runtime environment.');
+      return;
+    }
+
     const title = 'New Trip Request! 🚕';
     const options = {
       body: `From: ${trip.pickup.split(',')[0]} (₹${trip.fare})\nTo: ${trip.drop.split(',')[0]}`,
@@ -41,22 +48,26 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     };
 
     if (typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission === 'granted') {
-        // Try to show via service worker for better background support
-        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-          navigator.serviceWorker.ready.then(registration => {
-            registration.showNotification(title, options);
-          });
-        } else {
-          const n = new Notification(title, options);
-          n.onclick = () => {
-            window.focus();
-            window.location.href = '/requests';
-            n.close();
-          };
+      try {
+        if (Notification.permission === 'granted') {
+          // Try to show via service worker for better background support
+          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.ready.then(registration => {
+              registration.showNotification(title, options);
+            });
+          } else {
+            const n = new Notification(title, options);
+            n.onclick = () => {
+              window.focus();
+              window.location.href = '/requests';
+              n.close();
+            };
+          }
+        } else if (Notification.permission !== 'denied') {
+          Notification.requestPermission().catch(err => console.warn('Notification prompt postponed:', err));
         }
-      } else if (Notification.permission !== 'denied') {
-        Notification.requestPermission();
+      } catch (e) {
+        console.warn('Web notification blocked or failed in this native environment:', e);
       }
     }
   }, []);
@@ -77,7 +88,6 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         const distance = getDistance(t.pickupLat, t.pickupLng, driver.latitude, driver.longitude);
         if (distance > (t.targetRadius || 5)) return false;
       }
-      // If targetLocationOnly is false, it shows to all (as requested)
       
       if (!t.rejectedBy || t.rejectedBy.length === 0) return true;
       
@@ -89,27 +99,22 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       
       if (!myRejection) return true;
       
-      // If it's the old format (just ID), we assume it's permanent for compatibility
       if (!myRejection.includes('|')) return false; 
       
       const [, timestampStr] = myRejection.split('|');
       const timestamp = parseInt(timestampStr, 10);
       
-      // Show again if more than 60 seconds have passed (60000 ms)
       return (now - timestamp) > 60000;
     });
 
     setPendingTrips(prev => {
-      // Only update if the list of trip IDs has changed to avoid unnecessary re-renders
       const prevIds = prev.map(p => p.id).join(',');
       const currIds = pending.map(p => p.id).join(',');
       if (prevIds === currIds) return prev;
       return pending;
     });
     
-    // Alert for new trips if we have more than before
     if (pending.length > 0 && pending[0].id !== lastTripIdRef.current) {
-      // Avoid double alerting on initial mount
       if (lastTripIdRef.current !== null) {
         showNotification(pending[0]);
       }
@@ -152,7 +157,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     refreshTrips();
     
     if (!isSupabaseConfigured) {
-      const pollInterval = setInterval(refreshTrips, 30000); // Poll more frequently if realtime is off
+      const pollInterval = setInterval(refreshTrips, 30000);
       return () => clearInterval(pollInterval);
     }
 
@@ -205,8 +210,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
             };
             updatedTrips = [mappedTrip, ...updatedTrips];
           }
-        }
- else if (eventType === 'UPDATE') {
+        } else if (eventType === 'UPDATE') {
           const index = updatedTrips.findIndex(t => t.id === newRecord.id);
           if (index !== -1) {
             const mappedTrip: Trip = {
@@ -303,14 +307,13 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     };
   }, [driver, refreshTrips, updatePendingTrips]);
 
-  // Keep the timer for re-evaluating rejected trips local state
   useEffect(() => {
     const timerInterval = setInterval(() => {
       setAllTrips(currentAllTrips => {
         updatePendingTrips(currentAllTrips);
         return currentAllTrips;
       });
-    }, 5000); // 5 seconds is enough for checking local rejection timeouts
+    }, 5000);
     
     return () => clearInterval(timerInterval);
   }, [updatePendingTrips]);

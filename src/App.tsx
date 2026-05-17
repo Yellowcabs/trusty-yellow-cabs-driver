@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { cn } from './lib/utils';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'motion/react';
@@ -15,7 +15,6 @@ import { BottomNav } from './components/BottomNav';
 import { ActiveTripScreen } from './components/ActiveTripScreen';
 import { LocationTracker } from './components/LocationTracker';
 import { NotificationManager } from './components/NotificationManager';
-import { Car } from 'lucide-react';
 
 import { APIProvider } from '@vis.gl/react-google-maps';
 
@@ -46,7 +45,7 @@ function Layout() {
       
       <main className={cn(
         "flex-1 w-full transition-all duration-150",
-        !hideNav && "md:ml-64 p-0"
+        "!hideNav && md:ml-64 p-0"
       )}>
         <div className={cn(
           "mx-auto",
@@ -66,7 +65,7 @@ function Layout() {
         </div>
       </main>
       
-      {/* Active Trip Overlay - Persistent */}
+      {/* Active Trip Overlay - Persistent Native Implementation */}
       <AnimatePresence>
          {activeTrip && !isAdminPage && (
            <div className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
@@ -81,7 +80,9 @@ function Layout() {
 }
 
 export default function App() {
-  const apiKey = process.env.GOOGLE_MAPS_PLATFORM_KEY || import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+  // FIX: Removed desktop Node.js 'process.env' check which throws fatal reference crashes in native APK engines.
+  // Falls back gracefully to your standard mobile build environment configuration parameters.
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
   
   return (
     <APIProvider apiKey={apiKey} libraries={['places', 'marker', 'geometry']}>
